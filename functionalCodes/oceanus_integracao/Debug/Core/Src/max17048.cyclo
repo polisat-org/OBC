@@ -1,0 +1,10 @@
+../Core/Src/max17048.c:27:19:MAX17048_Init	3
+../Core/Src/max17048.c:34:26:i2c_write16	1
+../Core/Src/max17048.c:41:26:i2c_read16	2
+../Core/Src/max17048.c:49:19:MAX17048_ReadReg	1
+../Core/Src/max17048.c:53:19:MAX17048_WriteReg	1
+../Core/Src/max17048.c:57:19:MAX17048_GetVoltage	2
+../Core/Src/max17048.c:66:19:MAX17048_GetSOC	2
+../Core/Src/max17048.c:78:19:MAX17048_QuickStart	1
+../Core/Src/max17048.c:83:19:MAX17048_ResetPOR	1
+../Core/Src/max17048.c:87:19:MAX17048_ReadVersion	1

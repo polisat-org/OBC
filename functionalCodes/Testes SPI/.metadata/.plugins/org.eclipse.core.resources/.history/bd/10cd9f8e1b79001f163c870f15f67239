@@ -1,0 +1,22 @@
+/*
+ * auxiliarSPI.h
+ *
+ *  Created on: Sep 22, 2024
+ *      Author: jvmil
+ */
+
+#ifndef INC_AUXILIARSPI_H_
+#define INC_AUXILIARSPI_H_
+
+
+uint32_t converterFloatParaBinario(float myFloat);
+uint16_t converterFloatBinarioHigh(float myFloat);
+uint16_t converterFloatBinarioLow(float myFloat);
+float    converterBinarioParaFloat(uint16_t low, uint16_t high);
+
+
+
+
+
+
+#endif /* INC_AUXILIARSPI_H_ */

@@ -1,0 +1,19 @@
+/*
+ * auxiliarSPI.c
+ *
+ *  Created on: Sep 22, 2024
+ *      Author: jvmil
+ */
+
+uint32_t converterFloatParaBinario(float myFloat){
+	return *(__uint32_t*)&myFloat;
+}
+uint16_t converterFloatBinarioHigh(float myFloat){
+	uint32_t binario = converterFloatParaBinario(myFloat);
+	uint16_t high = (binario >> 16) & 0xFFFF;
+	return high;
+}
+uint16_t converterFloatBinarioLow(float myFloat);
+float    converterBinarioParaFloat(uint16_t low, uint16_t high);
+
+

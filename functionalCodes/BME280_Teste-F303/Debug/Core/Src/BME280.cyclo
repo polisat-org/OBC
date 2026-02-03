@@ -1,0 +1,14 @@
+../Core/Src/BME280.c:4:13:BME280_wireWriteRegister	1
+../Core/Src/BME280.c:12:13:BME280_wireReadRegister	1
+../Core/Src/BME280.c:17:13:BME280_readCalData	1
+../Core/Src/BME280.c:47:6:BME280_initDefault	2
+../Core/Src/BME280.c:78:16:BME280_compensateTemp	1
+../Core/Src/BME280.c:91:17:BME280_compensatePssr	2
+../Core/Src/BME280.c:115:17:BME280_compensateHmdt	1
+../Core/Src/BME280.c:133:6:BME280_setOversampling	10
+../Core/Src/BME280.c:159:6:BME280_setStandby	1
+../Core/Src/BME280.c:166:6:BME280_setFilter	1
+../Core/Src/BME280.c:173:6:BME280_sleep	1
+../Core/Src/BME280.c:180:6:BME280_setNormalMode	1
+../Core/Src/BME280.c:187:6:BME280_readSingleShot	1
+../Core/Src/BME280.c:196:6:BME280_read	1

@@ -1,0 +1,15 @@
+../Core/Src/uart-astreaus.c:52:6:OBC_COMM_Init	24	static
+../Core/Src/uart-astreaus.c:70:6:OBC_COMM_Process	64	static
+../Core/Src/uart-astreaus.c:96:9:TT_C_SendCommand	32	static
+../Core/Src/uart-astreaus.c:107:9:TT_C_ReceiveData	32	static
+../Core/Src/uart-astreaus.c:118:9:ADCS_SendCommand	16	static
+../Core/Src/uart-astreaus.c:128:9:ADCS_ReceiveData	16	static
+../Core/Src/uart-astreaus.c:138:9:CargaUtil_SendCommand	16	static
+../Core/Src/uart-astreaus.c:148:9:CargaUtil_ReceiveData	16	static
+../Core/Src/uart-astreaus.c:160:6:ADCS_LigaDesliga	16	static
+../Core/Src/uart-astreaus.c:167:6:CargaUtil_Start	8	static
+../Core/Src/uart-astreaus.c:174:6:CargaUtil_End	8	static
+../Core/Src/uart-astreaus.c:181:9:TT_C_IsBusy	4	static
+../Core/Src/uart-astreaus.c:190:6:BuildIdentifier	16	static
+../Core/Src/uart-astreaus.c:202:13:StartUARTReception	8	static
+../Core/Src/uart-astreaus.c:225:6:OBC_COMM_UART_RxCpltCallback	16	static

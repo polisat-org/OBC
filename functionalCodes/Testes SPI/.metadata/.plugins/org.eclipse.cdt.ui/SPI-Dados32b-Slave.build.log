@@ -1,0 +1,10 @@
+16:47:54 **** Incremental Build of configuration Debug for project SPI-Dados32b-Slave ****
+make -j16 all 
+arm-none-eabi-size  SPI-Dados32b-Slave.elf 
+   text	   data	    bss	    dec	    hex	filename
+   8940	     12	   1684	  10636	   298c	SPI-Dados32b-Slave.elf
+Finished building: default.size.stdout
+ 
+
+16:47:54 Build Finished. 0 errors, 0 warnings. (took 263ms)
+

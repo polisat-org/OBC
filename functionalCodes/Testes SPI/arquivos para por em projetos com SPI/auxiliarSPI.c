@@ -1,0 +1,34 @@
+/*
+ * auxiliarSPI.c
+ *
+ *  Created on: Sep 22, 2024
+ *      Author: jvmil
+ */
+#include "main.h"
+#include "auxiliarSPI.h"
+
+uint32_t converterFloatParaBinario(float myFloat);
+uint16_t converterFloatBinarioHigh(float myFloat);
+uint16_t converterFloatBinarioLow(float myFloat);
+float    converterBinarioParaFloat(uint16_t low, uint16_t high);
+
+uint32_t converterFloatParaBinario(float myFloat){
+	return *(__uint32_t*)&myFloat;
+}
+uint16_t converterFloatBinarioHigh(float myFloat){
+	uint32_t binario = converterFloatParaBinario(myFloat);
+	uint16_t high = (binario >> 16) & 0xFFFF;
+	return high;
+}
+uint16_t converterFloatBinarioLow(float myFloat){
+	uint32_t binario = converterFloatParaBinario(myFloat);
+	uint16_t low = binario & 0xFFFF;
+	return low;
+}
+float    converterBinarioParaFloat(uint16_t low, uint16_t high){
+	uint32_t valorInt = ((uint32_t)high << 16) | low;
+	float recebido = *((float*)&valorInt);
+	return recebido;
+}
+
+

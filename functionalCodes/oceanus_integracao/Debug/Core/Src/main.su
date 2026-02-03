@@ -1,0 +1,12 @@
+../Core/Src/main.c:162:5:main	232	static
+../Core/Src/main.c:277:6:SystemClock_Config	72	static
+../Core/Src/main.c:314:13:MX_I2C1_Init	8	static
+../Core/Src/main.c:348:13:MX_USART1_UART_Init	8	static
+../Core/Src/main.c:381:13:MX_USART2_UART_Init	8	static
+../Core/Src/main.c:414:13:MX_GPIO_Init	40	static
+../Core/Src/main.c:468:6:StartCommandReceiver	16	static
+../Core/Src/main.c:487:6:StartSafetyWatchdog	32	static
+../Core/Src/main.c:529:6:StartTelemetrySender	24	static
+../Core/Src/main.c:558:6:StartStateMachine	16	static
+../Core/Src/main.c:635:6:StartOnOffSubsystem	16	static
+../Core/Src/main.c:672:6:Error_Handler	4	static,ignoring_inline_asm
