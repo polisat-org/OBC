@@ -90,8 +90,8 @@ osThreadId OnOffSubsystemHandle;
 BME280_HandleTypeDef BMEBat; // temperatura da bateria
 BME280_HandleTypeDef BMEExt; //le temperatura da estrutura externa
 
-int8_t valorMinBME = -10;
-int8_t valorMAXBME = 24; //valores de referencia
+int8_t valorMinBME = 26;
+int8_t valorMAXBME = 27; //valores de referencia
 float temperatureBat; //leitura temperatura bateria
 float temperatureExt; //leitura temperatura externa
 uint8_t temperature; // flag para temperature: "low"==0, "ok"==1 ou "high"==2
@@ -197,11 +197,11 @@ int main(void)
     BME280_initDefault(&BMEBat, hi2c1); //bme da bateria com endereco 76
       BME280_setOversampling(&BMEBat, BME280_OS_16x, PSSR); // amostragem de leitura, tem outras opcoes na biblioteca
 
-      BME280_initOther(&BMEExt, hi2c1);//bme da estrutura com endereco 77
-      BME280_setOversampling(&BMEExt, BME280_OS_16x, PSSR);
+      //BME280_initOther(&BMEExt, hi2c1);//bme da estrutura com endereco 77
+      //BME280_setOversampling(&BMEExt, BME280_OS_16x, PSSR);
 
      //ds3231
-     Set_Time(30, 59, 23, 4, 26, 11, 25); //quarto parametro é o dia da semana, o quinto o dia do mes
+     Set_Time(00, 00, 19, 3, 24, 2, 26); //quarto parametro é o dia da semana, o quinto o dia do mes
 
      //ina3221
      INA3221_Begin(&hi2c1, &ina1, 1);
@@ -427,7 +427,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, PAYLOAD_END_Pin|PAYLOAD_START_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(ADCS_START_GPIO_Port, ADCS_START_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, ADCS_START_Pin|LED_YELLOW_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, LED_RED_Pin|LED_BLUE_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : TTC_BUSY_Pin */
   GPIO_InitStruct.Pin = TTC_BUSY_Pin;
@@ -442,12 +445,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : ADCS_START_Pin */
-  GPIO_InitStruct.Pin = ADCS_START_Pin;
+  /*Configure GPIO pins : ADCS_START_Pin LED_YELLOW_Pin */
+  GPIO_InitStruct.Pin = ADCS_START_Pin|LED_YELLOW_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(ADCS_START_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : LED_RED_Pin LED_BLUE_Pin */
+  GPIO_InitStruct.Pin = LED_RED_Pin|LED_BLUE_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -492,22 +502,33 @@ void StartSafetyWatchdog(void const * argument)
   {
 	  //Leitura dos sensores
 		BME280_readSingleShot(&BMEBat); //BME280
-		BME280_readSingleShot(&BMEExt); //BME280
+		//BME280_readSingleShot(&BMEExt); //BME280
 
 		Get_Time(&sec,&min,&hour,&day,&date,&month,&year); //ds3231
 		// day = dia da semana, date = dia do mes
 
 		//temperature BME
 		temperatureBat = BMEBat.READ.TEMP;
-		temperatureExt = BMEExt.READ.TEMP;
+		//temperatureExt = BMEExt.READ.TEMP;
 		//Verificação de temperature, muda flag temperature se uma está muito baixa ou alta
-		if (temperatureBat < valorMinBME) {
+		if (temperatureBat < valorMinBME) { //temp mto baixa
 			temperature = 0;
+			HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, 0);
+			HAL_GPIO_WritePin(LED_BLUE_GPIO_Port, LED_BLUE_Pin, 1);
+			HAL_GPIO_WritePin(LED_YELLOW_GPIO_Port, LED_YELLOW_Pin, 0);
 		}
-		else if (temperatureBat > valorMAXBME) {
+		else if (temperatureBat > valorMAXBME) { //temp mto alta
 			temperature = 2;
+			HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, 1);
+			HAL_GPIO_WritePin(LED_BLUE_GPIO_Port, LED_BLUE_Pin, 0);
+			HAL_GPIO_WritePin(LED_YELLOW_GPIO_Port, LED_YELLOW_Pin, 0);
 		}
-		else temperature = 1; //temperature ok
+		else {
+			temperature = 1; //temperature ok
+			HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, 0);
+			HAL_GPIO_WritePin(LED_BLUE_GPIO_Port, LED_BLUE_Pin, 0);
+			HAL_GPIO_WritePin(LED_YELLOW_GPIO_Port, LED_YELLOW_Pin, 1);
+		}
 
 		battery = 1; //nao estou lendo ainda
 
@@ -540,6 +561,7 @@ void StartTelemetrySender(void const * argument)
 	  //BME280
 	  tx_buffer_ttec[6] = temperatureBat; //parte inteira da temp lida pelo bme
 	  tx_buffer_ttec[7] = temperatureBat * 100 - tx_buffer_ttec[6] * 100; //parte decimal
+	  tx_buffer_ttec[8] = 'P';
 
 	  TT_C_SendCommand(&huart1, tx_buffer_ttec, sizeof(tx_buffer_ttec)); //funcao que manda para TTeC
     osDelay(3000);
