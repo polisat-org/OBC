@@ -43,11 +43,13 @@
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
-HAL_StatusTypeDef status;
+HAL_StatusTypeDef statusTx;
+HAL_StatusTypeDef statusRx;
 float testeFloat;
 uint32_t testeBinario;
 uint16_t binarioCima, binarioBaixo;
-uint16_t spiRxBuffer[2];
+uint8_t spiRxBuffer[2];
+uint8_t spiTxBuffer[2];
 
 
 float dadoTeste;
@@ -99,24 +101,28 @@ int main(void)
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
+  spiTxBuffer[0] = 1;
+  spiTxBuffer[1] = 2;
+  //spiTxBuffer[2] = 2;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-      status = HAL_SPI_Receive(&hspi1, spiRxBuffer, sizeof(spiRxBuffer), 1000);
-      testeBinario = (spiRxBuffer[0] << 16) + spiRxBuffer[1];
+      statusRx = HAL_SPI_Receive(&hspi1, spiRxBuffer, sizeof(spiRxBuffer), 1000);
+      statusTx = HAL_SPI_Transmit(&hspi1, spiTxBuffer, sizeof(spiTxBuffer), 1000);
+      //testeBinario = (spiRxBuffer[0] << 16) + spiRxBuffer[1];
 
-
+      HAL_Delay(1000);
       // Checar se a recepção foi bem-sucedida
-      if (status == HAL_OK) {
+      if (statusRx == HAL_OK) {
           // Sucesso: fazer algo com os dados recebidos
           // Exemplo: acender um LED se o dado recebido for 0xAB
-          if (dadoTeste > 100) {
+          if (spiRxBuffer[0] == 3) {
               HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);  // Exemplo: Acende um LED
           } else {
-              HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET); // Apaga o LED
+              HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET); // Apaga o LED
           }
       } else {
           // Erro: tomar uma ação (por exemplo, piscar um LED de erro)
