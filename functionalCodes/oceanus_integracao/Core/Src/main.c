@@ -90,8 +90,8 @@ osThreadId OnOffSubsystemHandle;
 BME280_HandleTypeDef BMEBat; // temperatura da bateria
 BME280_HandleTypeDef BMEExt; //le temperatura da estrutura externa
 
-int8_t valorMinBME = 26;
-int8_t valorMAXBME = 27; //valores de referencia
+int8_t valorMinBME = 23;
+int8_t valorMAXBME = 25; //valores de referencia
 float temperatureBat; //leitura temperatura bateria
 float temperatureExt; //leitura temperatura externa
 uint8_t temperature; // flag para temperature: "low"==0, "ok"==1 ou "high"==2
