@@ -1,0 +1,16 @@
+Código de transmissão UART para floats (números flutuantes):
+
+
+Habilitar o suporte a ponto flutuante para `printf`, como demonstrado no tutorial do site: https://controllerstech.com/stm32-uart-ll-transmit-polling-tutorial/
+
+Após isso, foi utilizado o sprintf que transforma um valor numérico em uma string e acomoda em uma variável já tipada.
+
+Para a transmissão fazer o type casting do buffer em uint8_t -> transmissão em pacotes de 8 bits, ou seja, está transmitidos cada caractere por vez. 
+
+A transmissão foi realizada em uart2. 
+
+O valor do float transmitido será truncado com base no valor adicionado após o ponto. Exemplo:
+
+sprintf(buffer, "%.6f\r\n", number);
+
+Transformamos o número flutuante em uma string com uma quantidade de números significativos após a virgula de 6 dígitos após a virgula. 
