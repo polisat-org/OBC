@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <string.h>
 
 /* USER CODE END Includes */
 
@@ -44,7 +45,7 @@
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint8_t rx_buffer[6];
+uint8_t rx_buffer[3] = "nao";
 uint8_t tx_buffer[16]= "Teste string hal";
 uint8_t counter = 0;
 /* USER CODE END PV */
@@ -94,7 +95,6 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_UART_Receive_IT(&huart2, rx_buffer, 6);
 
   /* USER CODE END 2 */
 
@@ -104,8 +104,17 @@ int main(void)
   {
 	  /* HAL_UART_Transmit(&huart2, tx_buffer, sizeof(tx_buffer), 1000);
 	  printf(" numero %d \n\r", counter);
-	  counter++;
-	  HAL_Delay(1000); */
+	  counter++; */
+
+	  HAL_UART_Receive_IT(&huart2, rx_buffer, 3);
+
+	  if (strcmp( (char *) rx_buffer, "sim") == 0) {
+		  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, 1);
+	  } else if (strcmp( (char *) rx_buffer, "nao") == 0) {
+		  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, 0);
+	  }
+
+	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -199,12 +208,23 @@ static void MX_USART2_UART_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : PA5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
