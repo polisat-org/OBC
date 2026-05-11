@@ -43,11 +43,14 @@
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
-HAL_StatusTypeDef status;
+HAL_StatusTypeDef statusM;
 float testeFloat = 100.322;
 uint32_t testeBinario;
 uint16_t binarioCima, binarioBaixo;
 uint16_t spiTxBuffer[2];
+
+uint8_t tsat[2];
+uint8_t rsat[2];
 
 /* USER CODE END PV */
 
@@ -103,16 +106,24 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	 binarioCima = converterFloatBinarioHigh(testeFloat);
+	 /*binarioCima = converterFloatBinarioHigh(testeFloat);
 	 binarioBaixo = converterFloatBinarioLow(testeFloat);
 	 spiTxBuffer[0] = binarioCima;
-	 spiTxBuffer[1] = binarioBaixo;
-	 status = HAL_SPI_Transmit(&hspi1, spiTxBuffer, sizeof(spiTxBuffer), 1000);
+	 spiTxBuffer[1] = binarioBaixo; */
+
+	 tsat[0] = 3;
+	 tsat[1] = 100;
+
+	 statusM = HAL_SPI_Transmit(&hspi1, tsat, sizeof(tsat), 1000);
 
 	 	  // Checar se a transmissão foi bem-sucedida
-	 	  if (status == HAL_OK) {
+	 	  if (statusM == HAL_OK) {
+
+	 		  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+
 	 	     // Sucesso: fazer algo (por exemplo, acender um LED)
 	 	  } else {
+	 		  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, 0);
 	 	     // Erro: tomar uma ação (por exemplo, piscar um LED de erro)
 	 	  }
 

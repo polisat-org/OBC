@@ -51,6 +51,7 @@ uint16_t binarioCima, binarioBaixo;
 uint8_t spiRxBuffer[2];
 uint8_t spiTxBuffer[2];
 
+uint8_t receber[2];
 
 float dadoTeste;
 
@@ -110,23 +111,33 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+<<<<<<< Updated upstream
       statusRx = HAL_SPI_Receive(&hspi1, spiRxBuffer, sizeof(spiRxBuffer), 1000);
       statusTx = HAL_SPI_Transmit(&hspi1, spiTxBuffer, sizeof(spiTxBuffer), 1000);
       //testeBinario = (spiRxBuffer[0] << 16) + spiRxBuffer[1];
+=======
+      /*status = HAL_SPI_Receive(&hspi1, spiRxBuffer, sizeof(spiRxBuffer), 1000);
+      testeBinario = (spiRxBuffer[0] << 16) + spiRxBuffer[1]; */
+
+	  status= HAL_SPI_Receive(&hspi1, receber, sizeof(receber), 1000);
+>>>>>>> Stashed changes
 
       HAL_Delay(1000);
       // Checar se a recepção foi bem-sucedida
       if (statusRx == HAL_OK) {
           // Sucesso: fazer algo com os dados recebidos
           // Exemplo: acender um LED se o dado recebido for 0xAB
+<<<<<<< Updated upstream
           if (spiRxBuffer[0] == 3) {
+=======
+
+>>>>>>> Stashed changes
               HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);  // Exemplo: Acende um LED
           } else {
               HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET); // Apaga o LED
           }
-      } else {
           // Erro: tomar uma ação (por exemplo, piscar um LED de erro)
-      }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

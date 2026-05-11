@@ -1,0 +1,4 @@
+../Core/Src/auxiliarSPI.c:15:10:converterFloatParaBinario	1
+../Core/Src/auxiliarSPI.c:18:10:converterFloatBinarioHigh	1
+../Core/Src/auxiliarSPI.c:23:10:converterFloatBinarioLow	1
+../Core/Src/auxiliarSPI.c:28:10:converterBinarioParaFloat	1

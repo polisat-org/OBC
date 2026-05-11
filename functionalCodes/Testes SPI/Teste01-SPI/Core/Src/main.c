@@ -109,40 +109,19 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  //MODELO 1 (apenas envia e o outro apenas recebe)
+      // 1. Abaixa o Chip Select (Pino PB6 na sua imagem)
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
 
-	  // Enviar dados SPI
-	  HAL_StatusTypeDef status = HAL_SPI_Transmit(&hspi1, spiTxBuffer, sizeof(spiTxBuffer), 1000);
-	  HAL_Delay(1000);
-	  status = HAL_SPI_Transmit(&hspi1, spiTxBuffer2, sizeof(spiTxBuffer2), 1000);
+      // 2. Envia os dados
+      status = HAL_SPI_Transmit(&hspi1, spiTxBuffer, 2, 100);
 
-	  // Checar se a transmissão foi bem-sucedida
-	  if (status == HAL_OK) {
-	     // Sucesso: fazer algo (por exemplo, acender um LED)
-	  } else {
-	     // Erro: tomar uma ação (por exemplo, piscar um LED de erro)
-	  }
+      // 3. Levanta o Chip Select
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
 
-	  // Pequena espera entre transmissões
-	  HAL_Delay(1000);  // Aguarda 1 segundo
-
-	  //modelo 2
-
-	  c = c + 1;
-	  if (c % 2 == 0){
-		  status = HAL_SPI_TransmitReceive(&hspi1, spiTxBuffer, spiRxBuffer, sizeof(spiTxBuffer),1000);
-	  }
-	  else{
-		  status = HAL_SPI_TransmitReceive(&hspi1, spiTxBuffer2, spiRxBuffer, sizeof(spiTxBuffer),1000);
-	  }
-	  //obs: algumas vezes os testes podem não funcionar, tente reconectar o usb.
-	  HAL_Delay(500);
-
-
-
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
+      if (status == HAL_OK) {
+          HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_9); // Pisca o LED do PA9 se enviou
+      }
+      HAL_Delay(1000); // Espera 1 segundo
   }
   /* USER CODE END 3 */
 }

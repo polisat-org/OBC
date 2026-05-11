@@ -1,6 +1,6 @@
 ################################################################################
 # Automatically-generated file. Do not edit!
-# Toolchain: GNU Tools for STM32 (12.3.rel1)
+# Toolchain: GNU Tools for STM32 (13.3.rel1)
 ################################################################################
 
 -include ../makefile.init
@@ -84,8 +84,8 @@ all: main-build
 main-build: Teste01-SPI-Slave.elf secondary-outputs
 
 # Tool invocations
-Teste01-SPI-Slave.elf Teste01-SPI-Slave.map: $(OBJS) $(USER_OBJS) C:\Users\jvmil\OneDrive\Documentos\USP\POLISAT\STM32\PoliCube\Milas\ testes\Testes\ SPI\Teste01-SPI-Slave\STM32F072RBTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-g++ -o "Teste01-SPI-Slave.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0 -T"C:\Users\jvmil\OneDrive\Documentos\USP\POLISAT\STM32\PoliCube\Milas testes\Testes SPI\Teste01-SPI-Slave\STM32F072RBTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Teste01-SPI-Slave.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -lstdc++ -lsupc++ -Wl,--end-group
+Teste01-SPI-Slave.elf Teste01-SPI-Slave.map: $(OBJS) $(USER_OBJS) C:\Users\misae\Sat\OBC\functionalCodes\Testes\ SPI\Teste01-SPI-Slave\STM32F072RBTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-g++ -o "Teste01-SPI-Slave.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0 -T"C:\Users\misae\Sat\OBC\functionalCodes\Testes SPI\Teste01-SPI-Slave\STM32F072RBTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Teste01-SPI-Slave.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -lstdc++ -lsupc++ -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

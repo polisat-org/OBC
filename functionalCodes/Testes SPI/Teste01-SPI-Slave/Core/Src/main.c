@@ -65,8 +65,6 @@ static void MX_SPI1_Init(void);
 /* USER CODE BEGIN 0 */
 
 
-
-
 /* USER CODE END 0 */
 
 /**
@@ -108,44 +106,17 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  // MODELO 1
+      // O Slave espera o tempo que for necessário (HAL_MAX_DELAY)
+      status = HAL_SPI_Receive(&hspi1, spiRxBuffer, 2, HAL_MAX_DELAY);
 
-	  // Receber dados via SPI
-	         status = HAL_SPI_Receive(&hspi1, spiRxBuffer, sizeof(spiRxBuffer), 1000);
-
-	         // Checar se a recepção foi bem-sucedida
-	         if (status == HAL_OK) {
-	             // Sucesso: fazer algo com os dados recebidos
-	             // Exemplo: acender um LED se o dado recebido for 0xAB
-	             if (spiRxBuffer[0] == 0xAB) {
-	                 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);  // Exemplo: Acende um LED
-	             } else {
-	                 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET); // Apaga o LED
-	             }
-	         } else {
-	             // Erro: tomar uma ação (por exemplo, piscar um LED de erro)
-	         }
-
-	  //MODELO 2
-	  status = HAL_SPI_TransmitReceive(&hspi1, spiTxBuffer, spiRxBuffer, sizeof(spiTxBuffer),1000);
-	  if (status == HAL_OK){
-		  if (spiRxBuffer[0] == 0xAB) {
-		  		  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);  // Exemplo: Acende um LED
-		  } else {
-		  	  	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET); // Apaga o LED
-		  }
-
-	  } else{
-		  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
-
-	  }
-
-
-
-
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
+      if (status == HAL_OK) {
+          // Se recebeu 0xAB, liga o LED do PA9
+          if (spiRxBuffer[0] == 0xAB) {
+              HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
+          } else {
+              HAL_GPIO_WritePin(GPIOB GPIO_PIN_3, GPIO_PIN_RESET);
+          }
+      }
   }
   /* USER CODE END 3 */
 }
