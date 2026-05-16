@@ -1,0 +1,2 @@
+Pasta para códigos do OBC que serão utilizados na missão Hermes.
+O que ainda está sendo desenvolvido e testado deve ser colocado na pasta Hermes Testes. 
