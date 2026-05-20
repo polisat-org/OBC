@@ -23,31 +23,12 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include "customTypes.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef enum {
-	EVT_INIT_DONE,
-	EVT_TC_SLOT,
-	EVT_HK_TICK,
-	EVT_HK_DONE,
-	EVT_TX_DONE
-} EventType;
 
-typedef struct {
-	EventType type;
-	uint32_t timestamp;
-	void *payload;
-} Event_t;
-
-typedef enum {
-	STATE_INIT,
-	STATE_IDLE,
-	STATE_RECEIVE,
-	STATE_HOUSEKEEP,
-	STATE_TRANSMIT
-} SatState_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -95,6 +76,11 @@ const osThreadAttr_t receiveTask_attributes = {
 osMessageQueueId_t eventQueueHandle;
 const osMessageQueueAttr_t eventQueue_attributes = {
   .name = "eventQueue"
+};
+/* Definitions for transmitQueue */
+osMessageQueueId_t transmitQueueHandle;
+const osMessageQueueAttr_t transmitQueue_attributes = {
+  .name = "transmitQueue"
 };
 /* Definitions for HkTickTimer */
 osTimerId_t HkTickTimerHandle;
@@ -209,6 +195,9 @@ int main(void)
   /* Create the queue(s) */
   /* creation of eventQueue */
   eventQueueHandle = osMessageQueueNew (16, sizeof(Event_t), &eventQueue_attributes);
+
+  /* creation of transmitQueue */
+  transmitQueueHandle = osMessageQueueNew (4, sizeof(Telemetry_t*), &transmitQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -377,7 +366,8 @@ void StartMainTask(void *argument)
 	  case STATE_IDLE:
 		  if (evt.type == EVT_HK_DONE) {
 			  state = STATE_TRANSMIT;
-			  osThreadFlagsSet(transmitTaskHandle, 0x01);
+			  Telemetry_t *pkt = (Telemetry_t*) evt.payload;
+			  osMessageQueuePut(transmitQueueHandle, &pkt, 0, 0);
 		  }
 		  break;
 	  case STATE_TRANSMIT:
@@ -403,16 +393,28 @@ void StartMainTask(void *argument)
 void StartHousekeepTask(void *argument)
 {
   /* USER CODE BEGIN StartHousekeepTask */
+	static Telemetry_t telemetryPacket;
   /* Infinite loop */
   for(;;)
   {
 	  osThreadFlagsWait(0x01, osFlagsWaitAny, osWaitForever);
 	  // read the sensors here...
+	  telemetryPacket.hora = 9;
+	  telemetryPacket.minuto = 13;
+	  telemetryPacket.segundo = 55;
+	  telemetryPacket.dia = 5;
+	  telemetryPacket.mes = 2;
+	  telemetryPacket.ano = 2007;
+	  telemetryPacket.temperatura_bateria = 5.5f;
+	  telemetryPacket.temperatura_estrutura = 78.54f;
+	  telemetryPacket.deploy_antena = 0;
+
 	  osMutexAcquire(uartMutexHandle, osWaitForever);
-	  printf("[%08lu] HK >> Reading sensors...\r\n", osKernelGetTickCount());
+	  uint8_t marker = 'H';
+	  HAL_UART_Transmit(&huart2, &marker, 1, 100);
 	  osMutexRelease(uartMutexHandle);
 
-	  Event_t evt = {EVT_HK_DONE, osKernelGetTickCount(), NULL};
+	  Event_t evt = {EVT_HK_DONE, osKernelGetTickCount(), &telemetryPacket};
 	  osMessageQueuePut(eventQueueHandle, &evt, 0, 0);
   }
   /* USER CODE END StartHousekeepTask */
@@ -428,13 +430,16 @@ void StartHousekeepTask(void *argument)
 void StartTransmitTask(void *argument)
 {
   /* USER CODE BEGIN StartTransmitTask */
+	Telemetry_t* telemetryPacket;
   /* Infinite loop */
   for(;;)
   {
-	  osThreadFlagsWait(0x01, osFlagsWaitAny, osWaitForever);
+	  osMessageQueueGet(transmitQueueHandle, &telemetryPacket, NULL, osWaitForever);
 	  // send telemetry to the earth
 	  osMutexAcquire(uartMutexHandle, osWaitForever);
-	  printf("[%08lu] TX >> Transmitting telemetry...\r\n", osKernelGetTickCount());
+	  uint8_t marker = 'T';
+	  HAL_UART_Transmit(&huart2, &marker, 1, 100);
+	  HAL_UART_Transmit(&huart2, (uint8_t*) telemetryPacket, sizeof(Telemetry_t), 1000);
 	  osMutexRelease(uartMutexHandle);
 
 	  Event_t evt = {EVT_TX_DONE, osKernelGetTickCount(), NULL};
@@ -459,11 +464,14 @@ void StartReceiveTask(void *argument)
 	  osThreadFlagsWait(0x01, osFlagsWaitAny, osWaitForever);
 	  // receive telecommand from earth
 	  osMutexAcquire(uartMutexHandle, osWaitForever);
-	  printf("[%08lu] RC >> TC window open. Listening...\r\n", osKernelGetTickCount());
+	  uint8_t marker = 'R';
+	  HAL_UART_Transmit(&huart2, &marker, 1, 100);
 	  osMutexRelease(uartMutexHandle);
+
 	  uint8_t buf[8];
 	  HAL_UART_Receive(&huart2, buf, 5, 5000);
 	  buf[5] = '\0';
+
 	  osMutexAcquire(uartMutexHandle, osWaitForever);
 	  printf("[%08lu] String received: %s\r\n", osKernelGetTickCount(), buf);
 	  osMutexRelease(uartMutexHandle);

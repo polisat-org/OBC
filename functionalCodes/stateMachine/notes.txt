@@ -1,3 +1,5 @@
+[Código inicial]
+
 Esse projeto contém o código base da máquina de estados, por enquanto ele tem 4 tasks apenas, sendo elas:
 	- Main (responsável por gerenciar a máquina de estados)
 	- Housekeeping (responsável por ler os sensores e enviar as informações de volta
@@ -8,3 +10,8 @@ As tasks housekeeping e receive são executadas sempre com um offset de 30s e in
 elas estão sendo executadas no tempo correto estou usando o módulo USART2 para printar os momentos em que elas
 rodam, além disso, deixei um intervalo de 5 segundos em que a Receive espera 5 bytes, assim é possível testar se
 ela está de fato recebendo input.
+
+[Atualização 20/05/2026]
+Criei o arquivo stateMachine/Core/Inc/customTypes.h para colocar os typedefs e a struct com os dados dos sensores,
+além disso adicionei uma nova queue para enviar os dados da MainTask para a TransmitTask e um script em python que
+testa o funcionamento da struct, parece estar transmitindo tudo corretamente.
