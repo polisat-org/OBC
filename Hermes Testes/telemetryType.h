@@ -4,7 +4,7 @@
 #define TELEMETRY_H
 
 // Todos os dados
-typedef struct {
+typedef struct __attribute__((packed)) {
     // OBC
     uint8_t hora;
     uint8_t minuto;
@@ -57,7 +57,7 @@ typedef struct {
 } telemetry;
 
 // Apenas uma temperatura e data, como estamos fazendo em maio/26
-typedef struct {
+typedef struct __attribute__((packed)) {
     // OBC
     uint8_t hora;
     uint8_t minuto;
@@ -71,7 +71,7 @@ typedef struct {
 } telemetryMay26;
 
 // Outra ideia para tamanho variavel: indicar quais dados sao usados
-typedef struct {
+typedef struct __attribute__((packed)) {
     // Indica quais secoes de dados estao presentes
     // bit0: OBC
     // bit1: Mecanica
