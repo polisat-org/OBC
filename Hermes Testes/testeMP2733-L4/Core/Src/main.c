@@ -98,7 +98,11 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
 MP2733_HandleTypeDef MP2733;
-  if (MP2733_Init(&MP2733, &hi2c1))
+
+printf("Começou");
+MP2733_Init(&MP2733, &hi2c1);
+mp2733_initialized = MP2733_WriteConfig(&MP2733);
+  if (mp2733_initialized)
   {
       printf("MP2733 inicializado com sucesso!\r\n");
   }
@@ -116,28 +120,19 @@ MP2733_HandleTypeDef MP2733;
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-     MP2733_Status_t status;
-      MP2733_Fault_t fault;
-      uint16_t adc_value;
 
       if (mp2733_initialized)
       {
           // Lê e exibe status
-          if (MP2733_GetStatus(&MP2733, &status))
+          if (MP2733_GetStatus(&MP2733))
           {
               MP2733_PrintStatus(&MP2733);
           }
 
           // Lê e exibe falhas
-          if (MP2733_GetFault(&MP2733, &fault))
+          if (MP2733_GetFault(&MP2733))
           {
               MP2733_PrintFault(&MP2733);
-          }
-
-          // Lê tensão da bateria (exemplo)
-          if (MP2733_ReadADC(&MP2733, MP2733_REG_ADC_BATTERY_VOLTAGE, &adc_value))
-          {
-              printf("ADC Bateria: %d\r\n", adc_value);
           }
 
           printf("---\r\n");
@@ -204,7 +199,6 @@ void SystemClock_Config(void)
   */
 static void MX_I2C1_Init(void)
 {
-
   /* USER CODE BEGIN I2C1_Init 0 */
 
   /* USER CODE END I2C1_Init 0 */
@@ -320,6 +314,10 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+int __io_putchar (int ch) {
+	HAL_UART_Transmit(&huart2, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
+	return ch;
+	}
 
 /* USER CODE END 4 */
 

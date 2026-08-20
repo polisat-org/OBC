@@ -59,8 +59,7 @@ uint8_t MP2733_Init(MP2733_HandleTypeDef * MP2733, I2C_HandleTypeDef *hi2c)
     MP2733->config.int_mask_usb          = 0xC0;  // 0b11000000
     MP2733->config.dpm_mask              = 0xE0;  // 0b11100000 (assumindo R=1)
     MP2733->config.jeita_config          = 0xEE;  // 0b11101110
-
-    mp2733_initialized = 1;
+    
     return 1;
 }
 
