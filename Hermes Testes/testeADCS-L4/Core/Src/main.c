@@ -21,9 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
 #include <string.h>
-#include "mp2733.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <uchar.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -42,19 +43,22 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-I2C_HandleTypeDef hi2c1;
-
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint8_t mp2733_initialized = 0;
-char msg;
+char comandoTerra[2] = "0"; // char
+uint8_t comandoADCS[1]; // inteiro
+uint8_t novoComando = 0;
+char angulo[6] = "143.8"; // char
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_I2C1_Init(void);
+static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -94,57 +98,36 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_I2C1_Init();
+  MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
-MP2733_HandleTypeDef MP2733;
-
-printf("Começou|\r\n");
-MP2733_Init(&MP2733, &hi2c1);
-mp2733_initialized = MP2733_WriteConfig(&MP2733);
-  if (mp2733_initialized)
-  {
-      printf("MP2733 inicializado com sucesso!\r\n");
-  }
-  else
-  {
-      printf("Erro na inicialização do MP2733!\r\n");
-  }
-  HAL_Delay(1000); // Espera 1 segundo para estabilizar
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
+     HAL_UART_Receive_IT(&huart2, (uint8_t*)comandoTerra, sizeof(comandoTerra) - 1);
+     HAL_UART_Receive_IT(&huart1, (uint8_t*)angulo, sizeof(angulo) - 1);
+ while (1)
   {
+    comandoADCS[0] = atoi(comandoTerra);
+
+    if(novoComando == 1) {
+      novoComando = 0;
+      HAL_UART_Transmit(&huart1,comandoADCS, sizeof(comandoADCS), 1000);  
+    }
+
+    printf("\r\n Enviou: ");
+    printf("%s", comandoTerra);
+    printf(", convertido como: ");
+    printf("%d", comandoADCS[0]);
+    printf("\r\n Recebeu: ");
+    printf("%s", angulo);
+    HAL_Delay(1000);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-      if (mp2733_initialized)
-      {
-          // Lê e exibe status
-          if (MP2733_GetStatus(&MP2733))
-          {
-              MP2733_PrintStatus(&MP2733);
-          }
-
-          // Lê e exibe falhas
-          if (MP2733_GetFault(&MP2733))
-          {
-              MP2733_PrintFault(&MP2733);
-          }
-
-          printf("---\r\n");
-      }
-      else {
-        
-          printf("MP2733 não inicializado, pulando leitura de status e falhas.\r\n");
-      }
-
-      HAL_Delay(5000); // Espera 5 segundos
   }
   /* USER CODE END 3 */
 }
@@ -199,49 +182,37 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief I2C1 Initialization Function
+  * @brief USART1 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_I2C1_Init(void)
+static void MX_USART1_UART_Init(void)
 {
-  /* USER CODE BEGIN I2C1_Init 0 */
 
-  /* USER CODE END I2C1_Init 0 */
+  /* USER CODE BEGIN USART1_Init 0 */
 
-  /* USER CODE BEGIN I2C1_Init 1 */
+  /* USER CODE END USART1_Init 0 */
 
-  /* USER CODE END I2C1_Init 1 */
-  hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x10D19CE4;
-  hi2c1.Init.OwnAddress1 = 0;
-  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c1.Init.OwnAddress2 = 0;
-  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
-  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
   {
     Error_Handler();
   }
+  /* USER CODE BEGIN USART1_Init 2 */
 
-  /** Configure Analogue filter
-  */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Digital filter
-  */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C1_Init 2 */
-
-  /* USER CODE END I2C1_Init 2 */
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -320,11 +291,24 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == huart2.Instance)
+    {
+        novoComando = 1;    // avisa loop que teve mensagem nova
+        HAL_UART_Receive_IT(&huart2, (uint8_t*)comandoTerra, sizeof(comandoTerra) - 1);        // deixa pronto pra receber de novo
+    }
+
+    if (huart->Instance == huart1.Instance)
+    { 
+      HAL_UART_Receive_IT(&huart1, (uint8_t*)angulo, sizeof(angulo) - 1);        // deixa pronto pra receber de novo
+    }
+}
+
 int __io_putchar (int ch) {
 	HAL_UART_Transmit(&huart2, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
 	return ch;
 	}
-
 /* USER CODE END 4 */
 
 /**
