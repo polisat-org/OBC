@@ -15,3 +15,9 @@ ela está de fato recebendo input.
 Criei o arquivo stateMachine/Core/Inc/customTypes.h para colocar os typedefs e a struct com os dados dos sensores,
 além disso adicionei uma nova queue para enviar os dados da MainTask para a TransmitTask e um script em python que
 testa o funcionamento da struct, parece estar transmitindo tudo corretamente.
+
+[Atualização 02/06/2026]
+Esqueci de realizar algumas atualizações, mas basicamente foram adicionadas as bibliotecas dos sensores BME280 e DS3231,
+ambas estão funcionando e sendo enviadas ao script Python, retornando valores críveis. As tarefas de deploy, detumbling
+e mission também estão sendo chamadas corretamente de acordo com o telecomando. Enviando uma mensagem de debug para
+confirmar que a tarefa roda. É interessante talvez substituir o DS3231 com o RTC integrado no STM32L476RG.

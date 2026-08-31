@@ -23,7 +23,11 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <stdarg.h>
+#include <stdbool.h>
 #include "customTypes.h"
+#include "BME280.h"
+#include "DS3231.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -33,7 +37,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define USART1_RX_FLAG       (1U << 0)
+#define USART1_ERROR_FLAG    (1U << 1)
+#define TASK_START_FLAG      (1U << 0)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -42,7 +48,11 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart3;
 
 /* Definitions for mainTask */
 osThreadId_t mainTaskHandle;
@@ -72,6 +82,27 @@ const osThreadAttr_t receiveTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for deployTask */
+osThreadId_t deployTaskHandle;
+const osThreadAttr_t deployTask_attributes = {
+  .name = "deployTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for detumblingTask */
+osThreadId_t detumblingTaskHandle;
+const osThreadAttr_t detumblingTask_attributes = {
+  .name = "detumblingTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for missionTask */
+osThreadId_t missionTaskHandle;
+const osThreadAttr_t missionTask_attributes = {
+  .name = "missionTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for eventQueue */
 osMessageQueueId_t eventQueueHandle;
 const osMessageQueueAttr_t eventQueue_attributes = {
@@ -87,39 +118,40 @@ osTimerId_t HkTickTimerHandle;
 const osTimerAttr_t HkTickTimer_attributes = {
   .name = "HkTickTimer"
 };
-/* Definitions for TcSlotTimer */
-osTimerId_t TcSlotTimerHandle;
-const osTimerAttr_t TcSlotTimer_attributes = {
-  .name = "TcSlotTimer"
-};
-/* Definitions for TcSlotOffsetTimer */
-osTimerId_t TcSlotOffsetTimerHandle;
-const osTimerAttr_t TcSlotOffsetTimer_attributes = {
-  .name = "TcSlotOffsetTimer"
-};
 /* Definitions for uartMutex */
 osMutexId_t uartMutexHandle;
 const osMutexAttr_t uartMutex_attributes = {
   .name = "uartMutex"
 };
 /* USER CODE BEGIN PV */
-
+static uint8_t usart1RxBuffer;
+static volatile uint8_t pendingTelecommand;
+static volatile uint32_t usart1LastError;
+static volatile uint32_t usart1ErrorCount;
+static volatile bool usart1RestartRequired;
+static volatile bool antennaDeployed;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_I2C1_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_USART3_UART_Init(void);
 void StartMainTask(void *argument);
 void StartHousekeepTask(void *argument);
 void StartTransmitTask(void *argument);
 void StartReceiveTask(void *argument);
+void StartDeployTask(void *argument);
+void StartDetumblingTask(void *argument);
+void StartMissionTask(void *argument);
 void vHkTickCallback(void *argument);
-void vTcSlotCallback(void *argument);
-void vTcSlotOffsetCallback(void *argument);
 
 /* USER CODE BEGIN PFP */
-
+static void debugPrintf(const char *format, ...);
+static void handleTelecommand(uint8_t tc, SatMode_t *mode,
+		bool *deployInProgress, volatile bool *deployCompleted);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -127,6 +159,73 @@ void vTcSlotOffsetCallback(void *argument);
 int __io_putchar(int ch) {
 	HAL_UART_Transmit(&huart2, (uint8_t*) &ch, 1, 10);
 	return ch;
+}
+
+static void debugPrintf(const char *format, ...)
+{
+	va_list args;
+
+	if (osMutexAcquire(uartMutexHandle, osWaitForever) != osOK) {
+		return;
+	}
+
+	va_start(args, format);
+	vprintf(format, args);
+	va_end(args);
+
+	osMutexRelease(uartMutexHandle);
+}
+
+static void handleTelecommand(uint8_t tc, SatMode_t *mode,
+		bool *deployInProgress, volatile bool *deployCompleted)
+{
+	switch ((Telecommand_t)tc) {
+	case TC_START_MISSION:
+		if ((*mode == SAT_MODE_IDLE) && !(*deployInProgress)) {
+			*mode = SAT_MODE_MISSION;
+			osThreadFlagsSet(missionTaskHandle, TASK_START_FLAG);
+			debugPrintf("[%08lu] rx accepted: mission\r\n",
+					osKernelGetTickCount());
+		} else {
+			debugPrintf("[%08lu] rx rejected: mission, mode=%u, deploy=%u\r\n",
+					osKernelGetTickCount(), (unsigned int)*mode,
+					(unsigned int)*deployInProgress);
+		}
+		break;
+
+	case TC_DEPLOY:
+		if ((*mode == SAT_MODE_IDLE) && !(*deployInProgress)
+				&& !(*deployCompleted)) {
+			*deployInProgress = true;
+			osThreadFlagsSet(deployTaskHandle, TASK_START_FLAG);
+			debugPrintf("[%08lu] rx accepted: deploy\r\n",
+					osKernelGetTickCount());
+		} else {
+			debugPrintf("[%08lu] rx rejected: deploy, mode=%u, active=%u, done=%u\r\n",
+					osKernelGetTickCount(), (unsigned int)*mode,
+					(unsigned int)*deployInProgress,
+					(unsigned int)*deployCompleted);
+		}
+		break;
+
+	case TC_START_DETUMBLING:
+		if ((*mode == SAT_MODE_IDLE) && !(*deployInProgress)) {
+			*mode = SAT_MODE_DETUMBLING;
+			osThreadFlagsSet(detumblingTaskHandle, TASK_START_FLAG);
+			debugPrintf("[%08lu] rx accepted: detumbling\r\n",
+					osKernelGetTickCount());
+		} else {
+			debugPrintf("[%08lu] rx rejected: detumbling, mode=%u, deploy=%u\r\n",
+					osKernelGetTickCount(), (unsigned int)*mode,
+					(unsigned int)*deployInProgress);
+		}
+		break;
+
+	default:
+		debugPrintf("[%08lu] rx rejected: unknown command 0x%02X\r\n",
+				osKernelGetTickCount(), tc);
+		break;
+	}
 }
 /* USER CODE END 0 */
 
@@ -160,6 +259,9 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
+  MX_I2C1_Init();
+  MX_USART1_UART_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -181,12 +283,6 @@ int main(void)
   /* Create the timer(s) */
   /* creation of HkTickTimer */
   HkTickTimerHandle = osTimerNew(vHkTickCallback, osTimerPeriodic, NULL, &HkTickTimer_attributes);
-
-  /* creation of TcSlotTimer */
-  TcSlotTimerHandle = osTimerNew(vTcSlotCallback, osTimerPeriodic, NULL, &TcSlotTimer_attributes);
-
-  /* creation of TcSlotOffsetTimer */
-  TcSlotOffsetTimerHandle = osTimerNew(vTcSlotOffsetCallback, osTimerOnce, NULL, &TcSlotOffsetTimer_attributes);
 
   /* USER CODE BEGIN RTOS_TIMERS */
   /* start timers, add new ones, ... */
@@ -215,6 +311,15 @@ int main(void)
 
   /* creation of receiveTask */
   receiveTaskHandle = osThreadNew(StartReceiveTask, NULL, &receiveTask_attributes);
+
+  /* creation of deployTask */
+  deployTaskHandle = osThreadNew(StartDeployTask, NULL, &deployTask_attributes);
+
+  /* creation of detumblingTask */
+  detumblingTaskHandle = osThreadNew(StartDetumblingTask, NULL, &detumblingTask_attributes);
+
+  /* creation of missionTask */
+  missionTaskHandle = osThreadNew(StartMissionTask, NULL, &missionTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -285,6 +390,89 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing = 0x00100D14;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -320,6 +508,41 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -332,6 +555,8 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -340,6 +565,53 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void initializeEverything(BME280_HandleTypeDef *BMEBat) {
+	Set_Time(0, 0, 0, 0, 0, 0, 0);
+	BME280_initDefault(BMEBat, hi2c1);
+	BME280_setOversampling(BMEBat, BME280_OS_16x, PSSR); // talvez devesse ser ALL aqui ao invés de PSSR
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        uint32_t flags = USART1_RX_FLAG;
+
+        pendingTelecommand = usart1RxBuffer;
+
+        if (HAL_UART_Receive_IT(&huart1, &usart1RxBuffer, 1U) != HAL_OK)
+        {
+            usart1LastError = HAL_UART_GetError(&huart1);
+            usart1ErrorCount++;
+            usart1RestartRequired = true;
+            flags |= USART1_ERROR_FLAG;
+        }
+
+        (void)osThreadFlagsSet(receiveTaskHandle, flags);
+    }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        usart1LastError = HAL_UART_GetError(huart);
+        usart1ErrorCount++;
+
+        if (huart->RxState == HAL_UART_STATE_READY)
+        {
+            usart1RestartRequired =
+                    (HAL_UART_Receive_IT(&huart1, &usart1RxBuffer, 1U)
+                            != HAL_OK);
+        }
+        else
+        {
+            usart1RestartRequired = false;
+        }
+
+        (void)osThreadFlagsSet(receiveTaskHandle, USART1_ERROR_FLAG);
+    }
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartMainTask */
@@ -353,33 +625,72 @@ void StartMainTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
 	Event_t evt;
-	SatState_t state = STATE_IDLE;
+	SatMode_t mode = SAT_MODE_IDLE;
+	bool deployInProgress = false;
 
 	osTimerStart(HkTickTimerHandle, pdMS_TO_TICKS(60000));
-	osTimerStart(TcSlotOffsetTimerHandle, pdMS_TO_TICKS(30000));
-  /* Infinite loop */
-  for(;;)
-  {
-	  osMessageQueueGet(eventQueueHandle, &evt, NULL, osWaitForever);
+	debugPrintf("[%08lu] main ready, mode=%u\r\n",
+			osKernelGetTickCount(), (unsigned int)mode);
 
-	  switch (state) {
-	  case STATE_IDLE:
-		  if (evt.type == EVT_HK_DONE) {
-			  state = STATE_TRANSMIT;
-			  Telemetry_t *pkt = (Telemetry_t*) evt.payload;
-			  osMessageQueuePut(transmitQueueHandle, &pkt, 0, 0);
-		  }
-		  break;
-	  case STATE_TRANSMIT:
-		  if (evt.type == EVT_TX_DONE) {
-			  state = STATE_IDLE;
-		  }
-		  break;
-	  default:
-		  state = STATE_IDLE;
-		  break;
-	  }
-  }
+	/* Infinite loop */
+	for(;;)
+	{
+		if (osMessageQueueGet(eventQueueHandle, &evt, NULL,
+				osWaitForever) != osOK) {
+			continue;
+		}
+
+		switch (evt.type) {
+		case EVT_HK_DONE: {
+			Telemetry_t *packet = evt.data.telemetry;
+
+			if (osMessageQueuePut(transmitQueueHandle, &packet, 0U,
+					osWaitForever) != osOK) {
+				debugPrintf("[%08lu] tx queue error\r\n",
+						osKernelGetTickCount());
+			}
+			break;
+		}
+
+		case EVT_RX_DONE:
+			handleTelecommand(evt.data.telecommand, &mode,
+					&deployInProgress, &antennaDeployed);
+			break;
+
+		case EVT_TX_DONE:
+			debugPrintf("[%08lu] tx done\r\n", evt.timestamp);
+			break;
+
+		case EVT_MISSION_DONE:
+			if (mode == SAT_MODE_MISSION) {
+				mode = SAT_MODE_IDLE;
+				debugPrintf("[%08lu] mission done, mode=%u\r\n",
+						evt.timestamp, (unsigned int)mode);
+			}
+			break;
+
+		case EVT_DETUMBLING_DONE:
+			if (mode == SAT_MODE_DETUMBLING) {
+				mode = SAT_MODE_IDLE;
+				debugPrintf("[%08lu] detumbling done, mode=%u\r\n",
+						evt.timestamp, (unsigned int)mode);
+			}
+			break;
+
+		case EVT_DEPLOY_DONE:
+			if (deployInProgress) {
+				deployInProgress = false;
+				antennaDeployed = true;
+				debugPrintf("[%08lu] deploy done\r\n", evt.timestamp);
+			}
+			break;
+
+		default:
+			debugPrintf("[%08lu] unknown event=%u\r\n",
+					evt.timestamp, (unsigned int)evt.type);
+			break;
+		}
+	}
   /* USER CODE END 5 */
 }
 
@@ -394,28 +705,33 @@ void StartHousekeepTask(void *argument)
 {
   /* USER CODE BEGIN StartHousekeepTask */
 	static Telemetry_t telemetryPacket;
+	static BME280_HandleTypeDef BMEBat;
+	initializeEverything(&BMEBat);
   /* Infinite loop */
   for(;;)
   {
-	  osThreadFlagsWait(0x01, osFlagsWaitAny, osWaitForever);
-	  // read the sensors here...
-	  telemetryPacket.hora = 9;
-	  telemetryPacket.minuto = 13;
-	  telemetryPacket.segundo = 55;
-	  telemetryPacket.dia = 5;
-	  telemetryPacket.mes = 2;
-	  telemetryPacket.ano = 2007;
-	  telemetryPacket.temperatura_bateria = 5.5f;
-	  telemetryPacket.temperatura_estrutura = 78.54f;
-	  telemetryPacket.deploy_antena = 0;
+	  osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, osWaitForever);
+	  // ler os sensores aqui...
+	  BME280_readSingleShot(&BMEBat);
+
+	  // criar a struct para transmitir
+	  telemetryPacket.temperatura_bateria = telemetryPacket.temperatura_estrutura = BMEBat.READ.TEMP;
+	  telemetryPacket.umidade = BMEBat.READ.HMDT;
+	  telemetryPacket.pressao = BMEBat.READ.PSSR;
+	  Get_Time(&telemetryPacket.segundo, &telemetryPacket.minuto, &telemetryPacket.hora, &telemetryPacket.dia, NULL, &telemetryPacket.mes, &telemetryPacket.ano);
+	  telemetryPacket.deploy_antena = antennaDeployed ? 1U : 0U;
 
 	  osMutexAcquire(uartMutexHandle, osWaitForever);
 	  uint8_t marker = 'H';
 	  HAL_UART_Transmit(&huart2, &marker, 1, 100);
 	  osMutexRelease(uartMutexHandle);
 
-	  Event_t evt = {EVT_HK_DONE, osKernelGetTickCount(), &telemetryPacket};
-	  osMessageQueuePut(eventQueueHandle, &evt, 0, 0);
+	  Event_t evt = {
+		  .type = EVT_HK_DONE,
+		  .timestamp = osKernelGetTickCount(),
+		  .data.telemetry = &telemetryPacket
+	  };
+	  osMessageQueuePut(eventQueueHandle, &evt, 0U, osWaitForever);
   }
   /* USER CODE END StartHousekeepTask */
 }
@@ -442,8 +758,11 @@ void StartTransmitTask(void *argument)
 	  HAL_UART_Transmit(&huart2, (uint8_t*) telemetryPacket, sizeof(Telemetry_t), 1000);
 	  osMutexRelease(uartMutexHandle);
 
-	  Event_t evt = {EVT_TX_DONE, osKernelGetTickCount(), NULL};
-	  osMessageQueuePut(eventQueueHandle, &evt, 0, 0);
+	  Event_t evt = {
+		  .type = EVT_TX_DONE,
+		  .timestamp = osKernelGetTickCount()
+	  };
+	  osMessageQueuePut(eventQueueHandle, &evt, 0U, osWaitForever);
   }
   /* USER CODE END StartTransmitTask */
 }
@@ -458,49 +777,131 @@ void StartTransmitTask(void *argument)
 void StartReceiveTask(void *argument)
 {
   /* USER CODE BEGIN StartReceiveTask */
+    uint32_t flags;
+
+    if (HAL_UART_Receive_IT(&huart1, &usart1RxBuffer, 1U) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    for (;;)
+    {
+        flags = osThreadFlagsWait(USART1_RX_FLAG | USART1_ERROR_FLAG,
+                osFlagsWaitAny, osWaitForever);
+
+        if ((flags & osFlagsError) != 0U)
+        {
+            continue;
+        }
+
+        if ((flags & USART1_ERROR_FLAG) != 0U)
+        {
+            if (usart1RestartRequired
+                    && (huart1.RxState == HAL_UART_STATE_READY))
+            {
+                usart1RestartRequired =
+                        (HAL_UART_Receive_IT(&huart1, &usart1RxBuffer, 1U)
+                                != HAL_OK);
+            }
+
+            debugPrintf("[%08lu] usart1 error=0x%08lX count=%lu restart=%u\r\n",
+                    osKernelGetTickCount(), usart1LastError,
+                    usart1ErrorCount, (unsigned int)usart1RestartRequired);
+        }
+
+        if ((flags & USART1_RX_FLAG) != 0U)
+        {
+            Event_t evt = {
+                .type = EVT_RX_DONE,
+                .timestamp = osKernelGetTickCount(),
+                .data.telecommand = pendingTelecommand
+            };
+
+            osMessageQueuePut(eventQueueHandle, &evt, 0U, osWaitForever);
+        }
+    }
+
+  /* USER CODE END StartReceiveTask */
+}
+
+/* USER CODE BEGIN Header_StartDeployTask */
+/**
+* @brief Function implementing the deployTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartDeployTask */
+void StartDeployTask(void *argument)
+{
+  /* USER CODE BEGIN StartDeployTask */
   /* Infinite loop */
   for(;;)
   {
-	  osThreadFlagsWait(0x01, osFlagsWaitAny, osWaitForever);
-	  // receive telecommand from earth
-	  osMutexAcquire(uartMutexHandle, osWaitForever);
-	  uint8_t marker = 'R';
-	  HAL_UART_Transmit(&huart2, &marker, 1, 100);
-	  osMutexRelease(uartMutexHandle);
-
-	  uint8_t buf[8];
-	  HAL_UART_Receive(&huart2, buf, 5, 5000);
-	  buf[5] = '\0';
-
-	  osMutexAcquire(uartMutexHandle, osWaitForever);
-	  printf("[%08lu] String received: %s\r\n", osKernelGetTickCount(), buf);
-	  osMutexRelease(uartMutexHandle);
+	  osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, osWaitForever);
+	  debugPrintf("[%08lu] deploy task ran\r\n", osKernelGetTickCount());
+	  Event_t evt = {
+		  .type = EVT_DEPLOY_DONE,
+		  .timestamp = osKernelGetTickCount()
+	  };
+	  osMessageQueuePut(eventQueueHandle, &evt, 0U, osWaitForever);
   }
-  /* USER CODE END StartReceiveTask */
+  /* USER CODE END StartDeployTask */
+}
+
+/* USER CODE BEGIN Header_StartDetumblingTask */
+/**
+* @brief Function implementing the detumblingTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartDetumblingTask */
+void StartDetumblingTask(void *argument)
+{
+  /* USER CODE BEGIN StartDetumblingTask */
+  /* Infinite loop */
+  for(;;)
+  {
+	  osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, osWaitForever);
+	  debugPrintf("[%08lu] detumbling task ran\r\n", osKernelGetTickCount());
+	  Event_t evt = {
+		  .type = EVT_DETUMBLING_DONE,
+		  .timestamp = osKernelGetTickCount()
+	  };
+	  osMessageQueuePut(eventQueueHandle, &evt, 0U, osWaitForever);
+  }
+  /* USER CODE END StartDetumblingTask */
+}
+
+/* USER CODE BEGIN Header_StartMissionTask */
+/**
+* @brief Function implementing the missionTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartMissionTask */
+void StartMissionTask(void *argument)
+{
+  /* USER CODE BEGIN StartMissionTask */
+  /* Infinite loop */
+  for(;;)
+  {
+	  osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, osWaitForever);
+	  debugPrintf("[%08lu] mission task ran\r\n", osKernelGetTickCount());
+	  Event_t evt = {
+		  .type = EVT_MISSION_DONE,
+		  .timestamp = osKernelGetTickCount()
+	  };
+	  osMessageQueuePut(eventQueueHandle, &evt, 0U, osWaitForever);
+  }
+  /* USER CODE END StartMissionTask */
 }
 
 /* vHkTickCallback function */
 void vHkTickCallback(void *argument)
 {
   /* USER CODE BEGIN vHkTickCallback */
-	osThreadFlagsSet(housekeepTaskHandle, 0x01);
+	osThreadFlagsSet(housekeepTaskHandle, TASK_START_FLAG);
   /* USER CODE END vHkTickCallback */
-}
-
-/* vTcSlotCallback function */
-void vTcSlotCallback(void *argument)
-{
-  /* USER CODE BEGIN vTcSlotCallback */
-	osThreadFlagsSet(receiveTaskHandle, 0x01);
-  /* USER CODE END vTcSlotCallback */
-}
-
-/* vTcSlotOffsetCallback function */
-void vTcSlotOffsetCallback(void *argument)
-{
-  /* USER CODE BEGIN vTcSlotOffsetCallback */
-	osTimerStart(TcSlotTimerHandle, pdMS_TO_TICKS(60000));
-  /* USER CODE END vTcSlotOffsetCallback */
 }
 
 /**
