@@ -99,8 +99,10 @@ def parse_args():
     )
     parser.add_argument('--debug-port', default='/dev/ttyACM0',
                         help='USART2 port (default: /dev/ttyACM0)')
-    parser.add_argument('--command-port', default='/dev/ttyUSB0',
-                        help='USART1 USB-UART port (default: /dev/ttyUSB0)')
+    parser.add_argument('--command-port', default=None,
+                        help='telecommand port (default: same as --debug-port; '
+                             'needs TC_ON_USART2 in the firmware or a '
+                             'PA3 -> PA10 jumper)')
     parser.add_argument('--baudrate', type=int, default=115200)
     return parser.parse_args()
 
@@ -108,12 +110,22 @@ def main():
     args = parse_args()
     stop_event = threading.Event()
 
+    # Single-port mode: the ST-Link VCP TX reaches PA3 (USART2_RX). Commands
+    # written to the debug port are taken by the firmware when built with
+    # TC_ON_USART2, or reach USART1 through a PA3 -> PA10 jumper.
+    single_port = args.command_port in (None, args.debug_port)
+    if single_port:
+        args.command_port = args.debug_port
+
     debug_serial = serial.Serial(
         args.debug_port, args.baudrate, timeout=0.2
     )
-    command_serial = serial.Serial(
-        args.command_port, args.baudrate, timeout=0.2
-    )
+    if single_port:
+        command_serial = debug_serial
+    else:
+        command_serial = serial.Serial(
+            args.command_port, args.baudrate, timeout=0.2
+        )
 
     reader = threading.Thread(
         target=read_usart2,
@@ -123,7 +135,10 @@ def main():
     reader.start()
 
     print(f'USART2 debug: {args.debug_port}')
-    print(f'USART1 commands: {args.command_port}')
+    if single_port:
+        print(f'Telecommands: {args.command_port} (USART2 RX, single port)')
+    else:
+        print(f'USART1 commands: {args.command_port}')
     print(f'Telemetry packet size: {TELEMETRY_SIZE} bytes')
     print('Commands: 0x01=mission, 0x02=deploy, 0x04=detumbling, q=quit')
 
@@ -150,7 +165,8 @@ def main():
     finally:
         stop_event.set()
         reader.join(timeout=1)
-        command_serial.close()
+        if not single_port:
+            command_serial.close()
         debug_serial.close()
 
 if __name__ == '__main__':

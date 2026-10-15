@@ -130,6 +130,9 @@ static volatile uint32_t usart1LastError;
 static volatile uint32_t usart1ErrorCount;
 static volatile bool usart1RestartRequired;
 static volatile bool antennaDeployed;
+#if TC_ON_USART2
+static uint8_t usart2RxBuffer;
+#endif
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -589,6 +592,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
         (void)osThreadFlagsSet(receiveTaskHandle, flags);
     }
+#if TC_ON_USART2
+    else if (huart->Instance == USART2)
+    {
+        /* Same path as a USART1 telecommand. Both IRQs share priority 5,
+         * so they never preempt each other on pendingTelecommand. */
+        pendingTelecommand = usart2RxBuffer;
+        (void)HAL_UART_Receive_IT(&huart2, &usart2RxBuffer, 1U);
+        (void)osThreadFlagsSet(receiveTaskHandle, USART1_RX_FLAG);
+    }
+#endif
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
@@ -611,6 +624,17 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 
         (void)osThreadFlagsSet(receiveTaskHandle, USART1_ERROR_FLAG);
     }
+#if TC_ON_USART2
+    else if (huart->Instance == USART2)
+    {
+        /* Overrun aborts the reception (RxState back to READY); framing and
+         * noise errors keep it running. */
+        if (huart->RxState == HAL_UART_STATE_READY)
+        {
+            (void)HAL_UART_Receive_IT(&huart2, &usart2RxBuffer, 1U);
+        }
+    }
+#endif
 }
 /* USER CODE END 4 */
 
@@ -783,6 +807,21 @@ void StartReceiveTask(void *argument)
     {
         Error_Handler();
     }
+
+#if TC_ON_USART2
+    /* Drop whatever reached USART2 RX before reception was armed. */
+    __HAL_UART_CLEAR_FLAG(&huart2, UART_CLEAR_PEF | UART_CLEAR_FEF
+            | UART_CLEAR_NEF | UART_CLEAR_OREF);
+    __HAL_UART_SEND_REQ(&huart2, UART_RXDATA_FLUSH_REQUEST);
+
+    if (HAL_UART_Receive_IT(&huart2, &usart2RxBuffer, 1U) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    debugPrintf("[%08lu] telecommands also accepted on USART2 (TC_ON_USART2)\r\n",
+            osKernelGetTickCount());
+#endif
 
     for (;;)
     {
