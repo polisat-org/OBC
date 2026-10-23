@@ -1,9 +1,9 @@
 import argparse
+from email import parser
 import struct
 import threading
 
 import serial
-
 
 TELEMETRY_FORMAT = (
     '<'         # little-endian
@@ -22,8 +22,10 @@ TELEMETRY_SIZE = struct.calcsize(TELEMETRY_FORMAT)
 
 
 def read_exact(ser, size):
+    # cria vetor data vazio para armazenar os bytes lidos
     data = bytearray()
 
+    # le bytes do serial e coloca em data ate ter tamanho size
     while len(data) < size:
         chunk = ser.read(size - len(data))
         if not chunk:
@@ -33,11 +35,13 @@ def read_exact(ser, size):
     return bytes(data)
 
 def read_telemetry(ser):
+    # le o pacote de telemetria do serial
     data = read_exact(ser, TELEMETRY_SIZE)
     if data is None:
         print('[USART2] incomplete telemetry packet')
         return
 
+    # coloca no formato TELEMETRY_FORMAT
     fields = struct.unpack(TELEMETRY_FORMAT, data)
     (hora, minuto, segundo, dia, mes, ano,
         temp_bateria, temp_estrutura, umidade, pressao,
@@ -77,6 +81,7 @@ def read_telemetry(ser):
 
 def read_usart2(ser, stop_event):
     while not stop_event.is_set():
+        # le primeiro byte do serial, que indica tipo de mensagem
         marker = ser.read(1)
 
         if not marker:
@@ -87,6 +92,7 @@ def read_usart2(ser, stop_event):
         elif marker == b'T':
             read_telemetry(ser)
         elif marker == b'[':
+            # 
             line = marker + ser.readline()
             print(line.decode(errors='replace').rstrip())
         else:
@@ -97,10 +103,15 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Test USART1 telecommands and USART2 debug/telemetry.'
     )
-    parser.add_argument('--debug-port', default='/dev/ttyACM0',
-                        help='USART2 port (default: /dev/ttyACM0)')
-    parser.add_argument('--command-port', default='/dev/ttyUSB0',
-                        help='USART1 USB-UART port (default: /dev/ttyUSB0)')
+    # parser.add_argument('--debug-port', default='/dev/ttyACM0',
+    #                     help='USART2 port (default: /dev/ttyACM0)')
+    # parser.add_argument('--command-port', default='/dev/ttyUSB0',
+    #                     help='USART1 USB-UART port (default: /dev/ttyUSB0)')
+    parser.add_argument('--debug-port', default='COM4',
+                        help='USART2 port (default: COM4)')
+    parser.add_argument('--command-port', default='COM3',
+                        help='USART1 USB-UART port (default: COM3)')
+
     parser.add_argument('--baudrate', type=int, default=115200)
     return parser.parse_args()
 

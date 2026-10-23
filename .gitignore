@@ -1,0 +1,120 @@
+Hermes Testes/stateMachine/uart.py
+Hermes/stateMachine/Debug/makefile
+Hermes/stateMachine/Core/Src/main.c
+Hermes Testes/stateMachine/uart.py
+Hermes/stateMachine/Debug/sources.mk
+Hermes/stateMachine/stateMachine.launch
+Hermes/stateMachine/Debug/Core/Src/main.o
+Hermes/stateMachine/Core/Inc/customTypes.h
+Hermes/stateMachine/Debug/Core/Src/main.su
+Hermes/stateMachine/Debug/stateMachine.elf
+Hermes/stateMachine/Debug/stateMachine.map
+Hermes Testes/stateMachine/Debug/makefile
+Hermes/stateMachine/Debug/Core/Src/BME280.o
+Hermes/stateMachine/Debug/Core/Src/DS3231.o
+Hermes/stateMachine/Debug/Core/Src/sysmem.o
+Hermes/stateMachine/Debug/stateMachine.list
+Hermes Testes/stateMachine/Core/Src/main.c
+Hermes/stateMachine/Debug/Core/Src/subdir.mk
+Hermes Testes/stateMachine/Debug/sources.mk
+Hermes/stateMachine/Debug/Core/Src/freertos.o
+Hermes/stateMachine/Debug/Core/Src/main.cyclo
+Hermes/stateMachine/Debug/Core/Src/syscalls.o
+Hermes Testes/stateMachine/stateMachine.launch
+Hermes/stateMachine/Debug/Core/Startup/subdir.mk
+Hermes/stateMachine/Debug/Core/Src/stm32l4xx_it.o
+Hermes Testes/stateMachine/Debug/Core/Src/main.o
+Hermes Testes/stateMachine/Debug/Core/Src/main.su
+Hermes Testes/stateMachine/Debug/stateMachine.elf
+Hermes Testes/stateMachine/Debug/stateMachine.map
+Hermes/stateMachine/.settings/language.settings.xml
+Hermes Testes/stateMachine/Debug/Core/Src/BME280.o
+Hermes Testes/stateMachine/Debug/Core/Src/DS3231.o
+Hermes Testes/stateMachine/Debug/Core/Src/sysmem.o
+Hermes Testes/stateMachine/Debug/stateMachine.list
+Hermes Testes/stateMachine/Debug/Core/Src/subdir.mk
+Hermes/stateMachine/Debug/Core/Src/system_stm32l4xx.o
+Hermes Testes/stateMachine/Debug/Core/Src/freertos.o
+Hermes Testes/stateMachine/Debug/Core/Src/main.cyclo
+Hermes Testes/stateMachine/Debug/Core/Src/syscalls.o
+Hermes/stateMachine/Debug/Core/Src/stm32l4xx_hal_msp.o
+Hermes/stateMachine/.settings/stm32cubeide.project.prefs
+Hermes Testes/stateMachine/Debug/Core/Startup/subdir.mk
+Hermes Testes/stateMachine/Debug/Core/Src/stm32l4xx_it.o
+Hermes Testes/stateMachine/.settings/language.settings.xml
+Hermes Testes/stateMachine/Debug/Core/Src/system_stm32l4xx.o
+Hermes/stateMachine/Debug/Core/Startup/startup_stm32l476rgtx.o
+Hermes Testes/stateMachine/Debug/Core/Src/stm32l4xx_hal_msp.o
+Hermes/stateMachine/Debug/Core/Src/stm32l4xx_hal_timebase_tim.o
+Hermes Testes/stateMachine/.settings/stm32cubeide.project.prefs
+Hermes/stateMachine/.settings/com.st.stm32cube.ide.mcu.sfrview.prefs
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/subdir.mk
+Hermes Testes/stateMachine/Debug/Core/Startup/startup_stm32l476rgtx.o
+Hermes Testes/stateMachine/Debug/Core/Src/stm32l4xx_hal_timebase_tim.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/list.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/queue.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/tasks.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/timers.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/subdir.mk
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/croutine.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/subdir.mk
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_dma.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_i2c.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_pwr.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rcc.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_tim.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_exti.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_gpio.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_uart.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_flash.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/event_groups.o
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/list.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_cortex.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_dma_ex.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_i2c_ex.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_pwr_ex.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rcc_ex.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_tim_ex.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/stream_buffer.o
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/queue.o
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/tasks.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_uart_ex.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal.o
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/timers.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_flash_ex.o
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/subdir.mk
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/croutine.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_dma.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_i2c.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_pwr.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rcc.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_tim.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_exti.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_gpio.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_uart.o
+Hermes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_flash_ramfunc.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_flash.o
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/event_groups.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/subdir.mk
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_cortex.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_dma_ex.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_i2c_ex.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_pwr_ex.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rcc_ex.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_tim_ex.o
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/stream_buffer.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_uart_ex.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_flash_ex.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/subdir.mk
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.o
+Hermes Testes/stateMachine/Debug/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_flash_ramfunc.o
+Hermes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/subdir.mk
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/subdir.mk
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.o
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.o
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/subdir.mk
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.o
+Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/subdir.mk

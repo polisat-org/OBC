@@ -429,7 +429,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 void initializeEverything(BME280_HandleTypeDef *BMEBat) {
-	Set_Time(0, 0, 0, 0, 0, 0, 0);
+	Set_Time(0, 49, 2, 0, 2, 9, 26);
 	BME280_initDefault(BMEBat, hi2c1);
 	BME280_setOversampling(BMEBat, BME280_OS_16x, PSSR);
 }
@@ -518,6 +518,7 @@ void StartHousekeepTask(void *argument)
 	static Telemetry_t telemetryPacket;
 	static BME280_HandleTypeDef BMEBat;
 	initializeEverything(&BMEBat);
+	uint8_t counter = 0;
   /* Infinite loop */
   for(;;)
   {

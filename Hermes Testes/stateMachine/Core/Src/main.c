@@ -715,10 +715,15 @@ void StartHousekeepTask(void *argument)
 	  BME280_readSingleShot(&BMEBat);
 
 	  // criar a struct para transmitir
-	  telemetryPacket.temperatura_bateria = telemetryPacket.temperatura_estrutura = BMEBat.READ.TEMP;
+	  /*telemetryPacket.temperatura_bateria = telemetryPacket.temperatura_estrutura = BMEBat.READ.TEMP;
 	  telemetryPacket.umidade = BMEBat.READ.HMDT;
 	  telemetryPacket.pressao = BMEBat.READ.PSSR;
 	  Get_Time(&telemetryPacket.segundo, &telemetryPacket.minuto, &telemetryPacket.hora, &telemetryPacket.dia, NULL, &telemetryPacket.mes, &telemetryPacket.ano);
+	  */
+
+	  telemetryPacket.temperatura_bateria = telemetryPacket.temperatura_estrutura = 17.81;
+	  telemetryPacket.umidade = 13;
+	  telemetryPacket.pressao = 439181;
 	  telemetryPacket.deploy_antena = antennaDeployed ? 1U : 0U;
 
 	  osMutexAcquire(uartMutexHandle, osWaitForever);

@@ -64,8 +64,8 @@ all: main-build
 main-build: stateMachine.elf secondary-outputs
 
 # Tool invocations
-stateMachine.elf stateMachine.map: $(OBJS) $(USER_OBJS) /home/davi/STM32CubeIDE/workspace_2.1.1/stateMachine/STM32L476RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "stateMachine.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/home/davi/STM32CubeIDE/workspace_2.1.1/stateMachine/STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="stateMachine.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+stateMachine.elf stateMachine.map: $(OBJS) $(USER_OBJS) C:\GitHub\OBC\Hermes\ Testes\stateMachine\STM32L476RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "stateMachine.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\GitHub\OBC\Hermes Testes\stateMachine\STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="stateMachine.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

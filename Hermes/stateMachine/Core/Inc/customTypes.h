@@ -39,6 +39,7 @@ typedef struct __attribute__((packed)) {
     float umidade;
     float pressao;
     uint8_t deploy_antena;
+    /*
 
     // EPS
     // Tensao e corrente 13.8V e 5V
@@ -75,7 +76,7 @@ typedef struct __attribute__((packed)) {
     uint16_t carga_bateria_1;
     uint16_t carga_bateria_2;
     int16_t  taxa_carga_descarga_bateria_1;
-    int16_t  taxa_carga_descarga_bateria_2;
+    int16_t  taxa_carga_descarga_bateria_2; */
 } Telemetry_t;
 
 #endif
