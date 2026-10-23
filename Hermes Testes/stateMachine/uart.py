@@ -61,6 +61,7 @@ def read_telemetry(ser):
 
     angulo = angulo_apontamento.rstrip(b'\0').decode(errors='replace')
 
+    # imprime a telemetria
     print('=== Telemetria ===')
     print(f"Hora:        {hora:02d}:{minuto:02d}:{segundo:02d}  {dia:02d}/{mes:02d}/{ano:02d}")
     print(f"Temp bateria:    {temp_bateria:.2f} °C")
@@ -91,8 +92,8 @@ def read_usart2(ser, stop_event):
             print('[HK] housekeeping ran')
         elif marker == b'T':
             read_telemetry(ser)
-        elif marker == b'[':
-            # 
+        # se for mensagem de debug, le a linha completa e imprime
+        elif marker == b'[': 
             line = marker + ser.readline()
             print(line.decode(errors='replace').rstrip())
         else:
@@ -100,6 +101,7 @@ def read_usart2(ser, stop_event):
 
 
 def parse_args():
+    # cria o parser de argumentos da linha de comando
     parser = argparse.ArgumentParser(
         description='Test USART1 telecommands and USART2 debug/telemetry.'
     )
@@ -107,25 +109,31 @@ def parse_args():
     #                     help='USART2 port (default: /dev/ttyACM0)')
     # parser.add_argument('--command-port', default='/dev/ttyUSB0',
     #                     help='USART1 USB-UART port (default: /dev/ttyUSB0)')
+
+    # para windows, usa com4 e com3 como portas padrão se nao mudar na linha de comando
     parser.add_argument('--debug-port', default='COM4',
                         help='USART2 port (default: COM4)')
     parser.add_argument('--command-port', default='COM3',
                         help='USART1 USB-UART port (default: COM3)')
 
+    # deixa baudrate padrao 115200, mas pode mudar na linha de comando
     parser.add_argument('--baudrate', type=int, default=115200)
     return parser.parse_args()
 
 def main():
     args = parse_args()
+    # cria um evento para parar a thread de leitura do serial
     stop_event = threading.Event()
 
+    # abre as portas seriais para debug e comandos
     debug_serial = serial.Serial(
         args.debug_port, args.baudrate, timeout=0.2
     )
     command_serial = serial.Serial(
-        args.command_port, args.baudrate, timeout=0.2
+        args.command_port, args.baudrate, timeout=1
     )
 
+    # cria uma thread para ler o serial de debug 
     reader = threading.Thread(
         target=read_usart2,
         args=(debug_serial, stop_event),
@@ -140,6 +148,8 @@ def main():
 
     try:
         while True:
+            # le telecomando do usuario e envia para o serial de comando 
+
             value = input('tc> ').strip()
 
             if value.lower() in {'q', 'quit', 'exit'}:
@@ -158,6 +168,12 @@ def main():
             command_serial.write(bytes([telecommand]))
             command_serial.flush()
             print(f'[USART1] sent 0x{telecommand:02X}')
+            ack = command_serial.read(1)
+            if ack:
+                print(f'[USART1] received 0x{ack[0]:02X}')
+            else:
+                print('No response (timeout)')
+
     finally:
         stop_event.set()
         reader.join(timeout=1)

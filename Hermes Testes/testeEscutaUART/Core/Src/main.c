@@ -45,7 +45,7 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint8_t rxBuffer[3];
+uint8_t rxBuffer[1];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -99,19 +99,17 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  printf("Comecou\r\n");
-  // HAL_UART_Receive_IT(&huart2, rxBuffer, 3);
+  
+  // printf("Comecou\r\n");
 
-  uint8_t envio = 2;
+  // Comeca a escutar uart2 = computador
+  HAL_UART_Receive_IT(&huart2, rxBuffer, sizeof(rxBuffer)); 
+
+  uint8_t teste = 0x02;
 
   while (1)
   {
-   
-    HAL_UART_Transmit(&huart1, &envio, 1, 1000);
-    HAL_UART_Transmit(&huart2, &teste, 1, 1000);
-    printf("Dentro do loop, mandando %d \r\n", envio);
-  
-	
+    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
 
 	  HAL_Delay(1000);
     /* USER CODE END WHILE */
@@ -281,10 +279,15 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-// void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-// 	HAL_UART_Receive_IT(&huart2, rxBuffer, 1); // arma a função de novo
-// 	printf("Recebido: %c\n", rxBuffer[0]); // imprime o que foi recebido
-// }
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+  if (huart->Instance == USART2)            // veio do computador
+    {
+        uint8_t cmd = rxBuffer[0];
+        HAL_UART_Transmit(&huart1, &cmd, 1, 10);  // repassa ao satélite
+        HAL_UART_Transmit(&huart2, &cmd, 1, 10);  // eco para o PC
+        HAL_UART_Receive_IT(&huart2, rxBuffer, 1); // rearma
+    }
+  }
 
 int __io_putchar (int ch) {
 	HAL_UART_Transmit(&huart2, (uint8_t*)&ch, 1, 1000);
