@@ -118,3 +118,56 @@ Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portabl
 Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/subdir.mk
 Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.o
 Hermes Testes/stateMachine/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/subdir.mk
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash_ex.o
+functionalCodes/oceanus_integracao/.settings/language.settings.xml
+functionalCodes/oceanus_integracao/Debug/Core/Src/uart-astreaus.cyclo
+functionalCodes/oceanus_integracao/Debug/Core/Src/uart-astreaus.su
+functionalCodes/oceanus_integracao/Debug/Core/Src/INA3221.o
+functionalCodes/oceanus_integracao/Debug/Core/Src/syscalls.o
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/tasks.o
+functionalCodes/oceanus_integracao/Debug/sources.mk
+functionalCodes/oceanus_integracao/Debug/Core/Src/main.o
+functionalCodes/oceanus_integracao/Debug/Core/Src/BME280.o
+functionalCodes/oceanus_integracao/Debug/Core/Src/DS3231.o
+functionalCodes/oceanus_integracao/Debug/Core/Src/sysmem.o
+functionalCodes/oceanus_integracao/Debug/Core/Src/subdir.mk
+functionalCodes/oceanus_integracao/Debug/Core/Src/freertos.o
+functionalCodes/oceanus_integracao/Debug/Core/Src/max17048.o
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/croutine.o
+functionalCodes/oceanus_integracao/Debug/Core/Src/stm32f1xx_it.o
+functionalCodes/oceanus_integracao/Debug/Core/Startup/subdir.mk
+functionalCodes/oceanus_integracao/Debug/Core/Src/system_stm32f1xx.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_cortex.o
+functionalCodes/oceanus_integracao/Debug/Core/Src/stm32f1xx_hal_msp.o
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS/cmsis_os.o
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS/subdir.mk
+functionalCodes/oceanus_integracao/Debug/objects.mk
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/list.o
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/queue.o
+functionalCodes/oceanus_integracao/Debug/Core/Startup/startup_stm32f103rbtx.o
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3/port.o
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/timers.o
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/subdir.mk
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/subdir.mk
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3/subdir.mk
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/event_groups.o
+functionalCodes/oceanus_integracao/Debug/makefile
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/stream_buffer.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rcc.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_i2c.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rcc_ex.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_dma.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pwr.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_exti.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_gpio.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_uart.o
+functionalCodes/oceanus_integracao/Debug/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_gpio_ex.o
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.o
+functionalCodes/oceanus_integracao/Debug/Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/subdir.mk
+Hermes Testes/envio_base_ttec/Debug/Drivers/STM32L4xx_HAL_Driver/Src/subdir.mk
+Hermes Testes/envio_base_ttec/Debug/makefile
+Hermes Testes/envio_base_ttec/Debug/sources.mk
+Hermes Testes/envio_base_ttec/Debug/Src/subdir.mk
+Hermes Testes/envio_base_ttec/Debug/Startup/subdir.mk

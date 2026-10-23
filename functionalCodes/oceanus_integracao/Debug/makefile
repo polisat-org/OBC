@@ -1,6 +1,6 @@
 ################################################################################
 # Automatically-generated file. Do not edit!
-# Toolchain: GNU Tools for STM32 (13.3.rel1)
+# Toolchain: GNU Tools for STM32 (14.3.rel1)
 ################################################################################
 
 -include ../makefile.init
@@ -64,8 +64,8 @@ all: main-build
 main-build: oceanus_integracao.elf secondary-outputs
 
 # Tool invocations
-oceanus_integracao.elf oceanus_integracao.map: $(OBJS) $(USER_OBJS) D:\Documents\USP\PoliSat\Projeto\ RTOS\Repositorio\PoliCube\Oceanus\oceanus_integracao\STM32F103RBTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "oceanus_integracao.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"D:\Documents\USP\PoliSat\Projeto RTOS\Repositorio\PoliCube\Oceanus\oceanus_integracao\STM32F103RBTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="oceanus_integracao.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+oceanus_integracao.elf oceanus_integracao.map: $(OBJS) $(USER_OBJS) C:\GitHub\OBC\functionalCodes\oceanus_integracao\STM32F103RBTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "oceanus_integracao.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"C:\GitHub\OBC\functionalCodes\oceanus_integracao\STM32F103RBTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="oceanus_integracao.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
