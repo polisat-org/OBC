@@ -92,6 +92,11 @@ def read_usart2(ser, stop_event):
             print('[HK] housekeeping ran')
         elif marker == b'T':
             read_telemetry(ser)
+        elif marker == b'P':
+            print('[DP] Deploy ran')
+        elif marker == b'B':
+            print('[DT] Detumbling ran')
+
         # se for mensagem de debug, le a linha completa e imprime
         elif marker == b'[': 
             line = marker + ser.readline()

@@ -16,8 +16,8 @@
 ../Core/Src/main.c:751:6:StartTransmitTask	1
 ../Core/Src/main.c:782:6:StartReceiveTask	7
 ../Core/Src/main.c:839:6:StartDeployTask	1
-../Core/Src/main.c:863:6:StartDetumblingTask	1
-../Core/Src/main.c:887:6:StartMissionTask	1
-../Core/Src/main.c:905:6:vHkTickCallback	1
-../Core/Src/main.c:920:6:HAL_TIM_PeriodElapsedCallback	2
-../Core/Src/main.c:938:6:Error_Handler	1
+../Core/Src/main.c:868:6:StartDetumblingTask	1
+../Core/Src/main.c:897:6:StartMissionTask	1
+../Core/Src/main.c:915:6:vHkTickCallback	1
+../Core/Src/main.c:930:6:HAL_TIM_PeriodElapsedCallback	2
+../Core/Src/main.c:948:6:Error_Handler	1

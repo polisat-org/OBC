@@ -844,6 +844,11 @@ void StartDeployTask(void *argument)
   {
 	  osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, osWaitForever);
 	  debugPrintf("[%08lu] deploy task ran\r\n", osKernelGetTickCount());
+	  osMutexAcquire(uartMutexHandle, osWaitForever);
+	  	  uint8_t marker = 'P';
+	  	  HAL_UART_Transmit(&huart2, &marker, 1, 100);
+	  osMutexRelease(uartMutexHandle);
+
 	  Event_t evt = {
 		  .type = EVT_DEPLOY_DONE,
 		  .timestamp = osKernelGetTickCount()
@@ -868,6 +873,11 @@ void StartDetumblingTask(void *argument)
   {
 	  osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, osWaitForever);
 	  debugPrintf("[%08lu] detumbling task ran\r\n", osKernelGetTickCount());
+	  osMutexAcquire(uartMutexHandle, osWaitForever);
+		  uint8_t marker = 'B';
+		  HAL_UART_Transmit(&huart2, &marker, 1, 100);
+	  osMutexRelease(uartMutexHandle);
+
 	  Event_t evt = {
 		  .type = EVT_DETUMBLING_DONE,
 		  .timestamp = osKernelGetTickCount()
