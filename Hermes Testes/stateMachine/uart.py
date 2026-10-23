@@ -130,7 +130,7 @@ def main():
         args.debug_port, args.baudrate, timeout=0.2
     )
     command_serial = serial.Serial(
-        args.command_port, args.baudrate, timeout=1
+        args.command_port, args.baudrate, timeout=0.2
     )
 
     # cria uma thread para ler o serial de debug 

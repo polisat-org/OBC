@@ -110,7 +110,8 @@ int main(void)
   while (1)
   {
     HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-
+    // HAL_UART_Transmit(&huart1, &teste, 1, 10);  // repassa ao satélite
+    // HAL_UART_Transmit(&huart2, &teste, 1, 10);  // para o PC
 	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
