@@ -46,6 +46,7 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 uint8_t rxBuffer[1];
+uint8_t n = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -102,17 +103,15 @@ int main(void)
   
   // printf("Comecou\r\n");
 
-  // Comeca a escutar uart2 = computador
-  HAL_UART_Receive_IT(&huart2, rxBuffer, sizeof(rxBuffer)); 
+  // Comeca a escutar uart1 = tt&c
+  HAL_UART_Receive_IT(&huart1, rxBuffer, sizeof(rxBuffer)); 
 
-  uint8_t teste = 0x02;
+  // uint8_t teste = 0x02;
 
   while (1)
   {
     HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-    // HAL_UART_Transmit(&huart1, &teste, 1, 10);  // repassa ao satélite
-    // HAL_UART_Transmit(&huart2, &teste, 1, 10);  // para o PC
-	  HAL_Delay(1000);
+	  HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -185,7 +184,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 9600;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -281,12 +280,14 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-  if (huart->Instance == USART2)            // veio do computador
+  if (huart->Instance == USART1)            // veio do tt&c
     {
+      n++;
         uint8_t cmd = rxBuffer[0];
-        HAL_UART_Transmit(&huart1, &cmd, 1, 10);  // repassa ao satélite
-        HAL_UART_Transmit(&huart2, &cmd, 1, 10);  // eco para o PC
-        HAL_UART_Receive_IT(&huart2, rxBuffer, 1); // rearma
+        HAL_UART_Transmit(&huart1, &cmd, 1, 100);  // eco para tt&c
+        // HAL_UART_Transmit(&huart1, &cmd, 1, 10);  // repassa para o satélite
+        printf("%d Command received: %d\r\n", n, cmd); // eco para putty 
+        HAL_UART_Receive_IT(&huart1, rxBuffer, 1); // rearma
     }
   }
 
