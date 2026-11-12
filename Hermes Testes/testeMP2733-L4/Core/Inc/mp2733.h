@@ -9,7 +9,7 @@ extern "C" {
 #include <stdio.h>
 
 // Endereço I2C do MP2733
-#define MP2733_ADDR 0x6C
+#define MP2733_ADDR 0x4B
 
 // Registradores do MP2733
 #define MP2733_REG_INPUT_CURRENT_LIMIT      0x00
