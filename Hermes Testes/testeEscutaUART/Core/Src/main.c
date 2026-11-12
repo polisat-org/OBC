@@ -1,18 +1,13 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
+  Teste de UART entre dois dispositivos
+  Está preparado para receber um comando pela UART1 (pinos D2 RX e D8 TX)
+  e mandar de volta para o dispositivo e pela UART2 (computador)
+  Recebe como bytes, entao se mandar char tem que converter
+  Baud rate de 9600 para UART1 e 115200 para UART2
+
+  Sofia, 2026
   ******************************************************************************
   */
 /* USER CODE END Header */
