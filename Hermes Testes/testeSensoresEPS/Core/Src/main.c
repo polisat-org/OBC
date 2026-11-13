@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ina3221.h"
+#include "mp2733.h"
 #include <stdio.h>
 /* USER CODE END Includes */
 
@@ -77,6 +78,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -100,57 +102,80 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  
+  // Creates handles
+     INA3221_Handle h;
+     MP2733_HandleTypeDef MP2733;
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
-    // Creates handle and initializes
-     INA3221_Handle h;
-    // this addr val is lowkey hardcoded
-    INA3221_init(&h, &hi2c1, INA3221_ADDR_VS, 500u);
+    // Initialization and reset
 
-    // Tries to reset
-    printf("trying to reset ina3221...\r\n");
-    INA3221_Error err;
-    err = INA3221_set_cfg(&h,
-      INA3221_CFG_RESET
-    );
-    if (err != INA3221_OK) {
-      printf("error: %u\r\n", err);
-      continue;
-    } else {
-      printf(SUCCESS_STR);
-    }
+    // INA3221
+      // this addr val is lowkey hardcoded
+      INA3221_init(&h, &hi2c1, INA3221_ADDR_VS, 500u);
 
-    HAL_Delay(100u);
+      printf("trying to reset ina3221...\r\n");
+      INA3221_Error err;
+      err = INA3221_set_cfg(&h,
+        INA3221_CFG_RESET
+      );
+      if (err != INA3221_OK) {
+        printf("error init INA: %u\r\n", err);
+        continue; // commented out to allow MP2733 initialization even if INA3221 fails
+      } else {
+        printf(SUCCESS_STR);
+      }
 
-    printf("trying to configure ina3221...\r\n");
-    err = INA3221_set_cfg(&h,
-      INA3221_CFG_CHAN_1
-      | INA3221_CFG_CHAN_2
-      | INA3221_CFG_CHAN_3
-      | INA3221_CFG_AVG_1
-      | INA3221_CFG_TIME_BUS_1100_US
-      | INA3221_CFG_TIME_SHUNT_1100_US
-      | INA3221_CFG_MODE_SHUNT_AND_BUS_CONTINUOUS
-    );
-    if (err != INA3221_OK) {
-      printf("error: %u\r\n", err);
-      continue;
-    } else {
-      printf(SUCCESS_STR);
-    }
+    // MP2733
+      MP2733_Init(&MP2733, &hi2c1);
+      uint8_t mp2733_initialized = MP2733_WriteConfig(&MP2733);
+      if (mp2733_initialized)
+      {
+          printf("MP2733 inicializado com sucesso!\r\n");
+      }
+      else
+      {
+          printf("Erro na inicialização do MP2733!\r\n");
+      }
 
     HAL_Delay(100u);
 
+    // Configuration
+
+    // INA
+      printf("trying to configure ina3221...\r\n");
+      err = INA3221_set_cfg(&h,
+        INA3221_CFG_CHAN_1
+        | INA3221_CFG_CHAN_2
+        | INA3221_CFG_CHAN_3
+        | INA3221_CFG_AVG_1
+        | INA3221_CFG_TIME_BUS_1100_US
+        | INA3221_CFG_TIME_SHUNT_1100_US
+        | INA3221_CFG_MODE_SHUNT_AND_BUS_CONTINUOUS
+      );
+      if (err != INA3221_OK) {
+        printf("error: %u\r\n", err);
+        // continue;
+      } else {
+        printf(SUCCESS_STR);
+      }
+
+    // MP2733
+      // Configuration is already done in MP2733_Init, so no need to configure again here
+
+    HAL_Delay(100u);
+
+    // INA die id reading
     printf("trying to read die id...\r\n");
     uint16_t id;
     err = INA3221_read_reg(&h, INA3221_REG_DIE_ID, &id);
     if (err != INA3221_OK) {
       printf("error: %u\r\n", err);
-      continue;
+      // continue;
     } else {
       printf(SUCCESS_STR);
       printf("die id is %x in hex\r\n", id);
@@ -159,7 +184,10 @@ int main(void)
     HAL_Delay(100u);
 
     unsigned i = 0u;
+
+    // Configs done, starts reading loop 
     while (1) {
+      //each loop reads a different INA channel
       INA3221_Chan chan;
       switch (i) {
         case 0u:
@@ -197,28 +225,51 @@ int main(void)
           break;
       }
 
-      printf("trying to read shunt voltage from channel %u\r\n", i);
+      // printf("trying to read shunt voltage from channel %u\r\n", i);
       uint16_t v;
       err = INA3221_read_reg(&h, reg_shunt, &v);
       if (err != INA3221_OK) {
         printf("error: %u\r\n", err);
-        continue;
+        //continue;
       } else {
         printf(SUCCESS_STR);
       }
-      printf("current is %f ma\r\n ", (float)(v >> 3u) * 40e-6 * 1e3 * 1e1);
 
-      printf("trying to read bus voltage from channel %u\r\n", i);
+      printf("current %u is %.1f ma\r\n ", i, (float)(v >> 3u) * 40e-6 * 1e3 * 1e1);
+      printf("raw current %u is %.1f ma\r\n ", i, (float)((int16_t)v >> 3u) * 40e-6 * 1e3 * 1e1);
+
+      // printf("trying to read bus voltage from channel %u\r\n", i);
       err = INA3221_read_reg(&h, reg_bus, &v);
       if (err != INA3221_OK) {
         printf("error: %u\r\n", err);
-        continue;
+        // continue;
       } else {
         printf(SUCCESS_STR);
       }
-      printf("voltage is %f V\r\n", (float)(v >> 3u) * 8e-3);
+      printf("voltage %u is %f V\r\n", i, (float)(v >> 3u) * 8e-3);
 
       i = (i+1u)%3u;
+
+      if (mp2733_initialized)
+      {
+          // Lê e exibe status
+          if (MP2733_GetStatus(&MP2733))
+          {
+              MP2733_PrintStatus(&MP2733);
+          }
+
+          // Lê e exibe falhas
+          if (MP2733_GetFault(&MP2733))
+          {
+              MP2733_PrintFault(&MP2733);
+          }
+
+          printf("---\r\n");
+      }
+      else {
+        
+          printf("MP2733 não inicializado, pulando leitura de status e falhas.\r\n");
+      }
 
       HAL_Delay(1000u);
     }
