@@ -115,7 +115,7 @@ INA3221_init(INA3221_Handle *h,
 
 INA3221_Error
 INA3221_default_init(INA3221_Handle *h,
-    INA3221_I2C_Handle *i2c_handle,
+    INA3221_I2C_Handle *i2c_handle
 );
 
 INA3221_Error 
@@ -154,6 +154,18 @@ INA3221_read_voltage(INA3221_Handle *h,
     INA3221_Chan chan,
     INA3221_VoltageType type,
     int16_t *out_voltage
+);
+
+INA3221_Error
+INA3221_get_bus_voltage(INA3221_Handle *h,
+    INA3221_Chan chan,
+    float* voltage
+);
+
+INA3221_Error
+INA3221_get_shunt_current(INA3221_Handle *h,
+    INA3221_Chan chan,
+    float* current
 );
 
 #endif // INA_3221_H
