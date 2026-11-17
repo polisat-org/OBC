@@ -40,10 +40,11 @@ uint8_t MP2733_Init(MP2733_HandleTypeDef * MP2733, I2C_HandleTypeDef *hi2c)
     // Atribui handle I2C certo ao handle MP2733
     MP2733->hi2c = hi2c;
 
-    // Verifica se o chip responde lendo status e fault
-    // Os valores inicias sao colocados no handle MP2733
-    MP2733_GetStatus(MP2733);
-    MP2733_GetFault(MP2733);
+    // Verifica se o chip responde 
+    if(HAL_I2C_IsDeviceReady(MP2733->hi2c, MP2733_ADDR << 1, 3, MP2733_I2C_TIMEOUT) != HAL_OK)
+    {
+        return 0; // Falha na comunicação
+    }
 
     // Configuração padrao dos registradores
     MP2733->config.input_current_limit   = 0x48;  // 0b01001000

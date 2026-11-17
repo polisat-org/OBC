@@ -48,7 +48,7 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 uint8_t mp2733_initialized = 0;
-char msg;
+uint8_t msg;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -101,17 +101,6 @@ int main(void)
 MP2733_HandleTypeDef MP2733;
 
 printf("Começou|\r\n");
-MP2733_Init(&MP2733, &hi2c1);
-mp2733_initialized = MP2733_WriteConfig(&MP2733);
-  if (mp2733_initialized)
-  {
-      printf("MP2733 inicializado com sucesso!\r\n");
-  }
-  else
-  {
-      printf("Erro na inicialização do MP2733!\r\n");
-  }
-  HAL_Delay(1000); // Espera 1 segundo para estabilizar
 
   /* USER CODE END 2 */
 
@@ -122,7 +111,55 @@ mp2733_initialized = MP2733_WriteConfig(&MP2733);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+uint8_t mp2733_initialized  = MP2733_Init(&MP2733, &hi2c1);
+  HAL_Delay(100); // Espera estabilizar
 
+  // if (mp2733_initialized)
+  // {
+  //     printf("MP2733 inicializado com sucesso!\r\n");
+  // }
+  // else
+  // {
+  //     printf("Erro na inicialização do MP2733!\r\n");
+  //     continue; // Pula para a próxima iteração do loop
+  // }
+
+
+HAL_StatusTypeDef teste = HAL_I2C_IsDeviceReady(&hi2c1, MP2733_ADDR << 1, 3, 100);
+if(teste == HAL_OK)
+  {
+      printf("MP2733 está pronto para comunicação!\r\n");
+  }
+  else
+  {
+      printf("MP2733 não está pronto para comunicação!\r\n");
+      continue; // Pula para a próxima iteração do loop
+  }
+
+uint8_t mp2733_comm = MP2733_GetStatus(&MP2733);
+HAL_Delay(100);
+if (mp2733_comm)
+  {
+      printf("MP2733 comunicação OK!\r\n");
+  }
+  else
+  {
+      printf("Erro na comunicação com o MP2733!\r\n");
+      continue; // Pula para a próxima iteração do loop
+  }
+
+  uint8_t mp2733_write_config = MP2733_WriteConfig(&MP2733);
+if (mp2733_write_config)
+  {
+      printf("MP2733 configurado com sucesso!\r\n");
+  }
+  else
+  {
+      printf("Erro na configuração do MP2733!\r\n");
+      continue; // Pula para a próxima iteração do loop
+  }
+
+  while(1){
       if (mp2733_initialized)
       {
           // Lê e exibe status
@@ -144,7 +181,8 @@ mp2733_initialized = MP2733_WriteConfig(&MP2733);
           printf("MP2733 não inicializado, pulando leitura de status e falhas.\r\n");
       }
 
-      HAL_Delay(5000); // Espera 5 segundos
+      HAL_Delay(1000); // Espera 5 segundos
+    }
   }
   /* USER CODE END 3 */
 }

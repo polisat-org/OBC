@@ -114,6 +114,15 @@ INA3221_init(INA3221_Handle *h,
 );
 
 INA3221_Error
+INA3221_default_init(INA3221_Handle *h,
+    INA3221_I2C_Handle *i2c_handle,
+);
+
+INA3221_Error 
+INA3221_default_config(INA3221_Handle *h
+);
+
+INA3221_Error
 INA3221_set_reg(INA3221_Handle *h,
     INA3221_Reg reg
 );

@@ -22,6 +22,48 @@ INA3221_init(INA3221_Handle *h,
 }
 
 INA3221_Error
+INA3221_default_init(INA3221_Handle *h,
+    INA3221_I2C_Handle *i2c_handle
+)
+{
+    // This addr val is hardcoded
+    INA3221_Error err1 = INA3221_init(&h, &hi2c1, INA3221_ADDR_VS, 500u);
+    INA3221_Error err2 = INA3221_set_cfg(&h,
+      INA3221_CFG_RESET
+    );
+    if (err1 == INA3221_OK || err2 == INA3221_OK) {
+        printf("Default INA init successful\r\n")
+    } else if (err1 != INA3221_OK) {
+        printf("Error init INA: %u\r\n", err1);
+        return err1;
+    } else if (err2 != INA3221_OK) {
+        printf("Error reset INA: %u\r\n", err2);
+        return err2;
+    }
+}
+
+INA3221_Error
+INA3221_default_config(INA3221_Handle *h
+)
+{
+    err = INA3221_set_cfg(&h,
+      INA3221_CFG_CHAN_1
+      | INA3221_CFG_CHAN_2
+      | INA3221_CFG_CHAN_3
+      | INA3221_CFG_AVG_1
+      | INA3221_CFG_TIME_BUS_1100_US
+      | INA3221_CFG_TIME_SHUNT_1100_US
+      | INA3221_CFG_MODE_SHUNT_AND_BUS_CONTINUOUS
+    );
+    if (err != INA3221_OK) {
+      printf("Error config: %u\r\n", err);
+    } else {
+      printf("Default INA config successful\r\n");
+    }
+    return err;
+}
+
+INA3221_Error
 INA3221_set_reg(INA3221_Handle *h,
     INA3221_Reg reg
 )

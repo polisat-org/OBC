@@ -122,6 +122,8 @@ int main(void)
       printf(SUCCESS_STR);
     }
 
+    HAL_Delay(100u);
+
     // General configurations
     printf("trying to configure ina3221...\r\n");
     err = INA3221_set_cfg(&h,
@@ -200,7 +202,7 @@ int main(void)
       }
 
       // Tries to read shunt voltage (current) from channel i
-      printf("trying to read shunt voltage from channel %u\r\n", i);
+      // printf("trying to read shunt voltage from channel %u\r\n", i);
       uint16_t v;
       err = INA3221_read_reg(&h, reg_shunt, &v);
       if (err != INA3221_OK) {
@@ -209,10 +211,12 @@ int main(void)
       } else {
         printf(SUCCESS_STR);
       }
-      printf("current is %f ma\r\n ", (float)(v >> 3u) * 40e-6 * 1e3 * 1e1);
+      printf("current %u is %.1f ma\r\n ", i, (float)(v >> 3u) * 40e-6 * 1e3 * 1e1);
+      printf("raw current %u is %.1f ma\r\n ", i, (float)((int16_t)v >> 3u) * 40e-6 * 1e3 * 1e1);
+
 
       // Tries to read bus voltage from channel i
-      printf("trying to read bus voltage from channel %u\r\n", i);
+      // printf("trying to read bus voltage from channel %u\r\n", i);
       err = INA3221_read_reg(&h, reg_bus, &v);
       if (err != INA3221_OK) {
         printf("error: %u\r\n", err);
@@ -220,7 +224,7 @@ int main(void)
       } else {
         printf(SUCCESS_STR);
       }
-      printf("voltage is %f V\r\n", (float)(v >> 3u) * 8e-3);
+      printf("voltage %u is %f V\r\n", i, (float)(v >> 3u) * 8e-3);
 
       // Gets next i
       i = (i+1u)%3u;
@@ -403,6 +407,10 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+int __io_putchar(int ch) {
+  HAL_UART_Transmit(&huart2, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
+  return ch;
+}
 
 /* USER CODE END 4 */
 
