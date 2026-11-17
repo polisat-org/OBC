@@ -34,7 +34,6 @@ INA3221_default_init(INA3221_Handle *h,
       INA3221_CFG_RESET
     );
 
-    HAL_Delay(100u);
     return err;
 }
 
@@ -52,7 +51,6 @@ INA3221_default_config(INA3221_Handle *h
       | INA3221_CFG_MODE_SHUNT_AND_BUS_CONTINUOUS
     );
 
-    HAL_Delay(100u);
     return err;
 }
 
