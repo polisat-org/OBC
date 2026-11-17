@@ -268,7 +268,7 @@ INA3221_Error INA3221_get_shunt_current(INA3221_Handle* h, INA3221_Chan chan, fl
     }
     uint16_t c;
     INA3221_Error err = INA3221_read_reg(h, reg_shunt, &c);
-    *current = (float)(c >> 3u) * 40e-6 * 1e3 * 1e1;
+    *current = (float)((int16_t) c >> 3u) * 40e-6 * 1e3 * 1e1;
 
     return err;
 }
