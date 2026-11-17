@@ -63,7 +63,7 @@ void Error_Handler(void);
  * (ST-Link virtual COM port), feeding the same path as USART1. Set to 0 for
  * flight builds, and when a PA3 -> PA10 jumper is in place (every byte would
  * be received twice). */
-#define TC_ON_USART2 1
+#define TC_ON_USART2 0
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
