@@ -1,20 +1,20 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2026 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -66,9 +66,9 @@ static void MX_USART2_UART_Init(void);
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
+ * @brief  The application entry point.
+ * @retval int
+ */
 int main(void)
 {
 
@@ -105,129 +105,110 @@ int main(void)
   while (1)
   {
     // Creates handles
-     INA3221_Handle h;
+    INA3221_Handle h;
 
     // Initialization and reset
     // This addr val is hardcoded
-    INA3221_init(&h, &hi2c1, INA3221_ADDR_VS, 500u);
     printf("trying to reset ina3221...\r\n");
-    // If there are errors in reset, its registered in err
-    INA3221_Error err = INA3221_set_cfg(&h,
-      INA3221_CFG_RESET
-    );
-    if (err != INA3221_OK) {
+
+    INA3221_Error err = INA3221_default_init(&h, &hi2c1);
+    if (err != INA3221_OK)
+    {
       printf("error init INA: %u\r\n", err);
       continue; // Skips to next loop iteration
-    } else {
+    }
+    else
+    {
       printf(SUCCESS_STR);
     }
 
-    HAL_Delay(100u);
-
-    // General configurations
     printf("trying to configure ina3221...\r\n");
-    err = INA3221_set_cfg(&h,
-      INA3221_CFG_CHAN_1
-      | INA3221_CFG_CHAN_2
-      | INA3221_CFG_CHAN_3
-      | INA3221_CFG_AVG_1
-      | INA3221_CFG_TIME_BUS_1100_US
-      | INA3221_CFG_TIME_SHUNT_1100_US
-      | INA3221_CFG_MODE_SHUNT_AND_BUS_CONTINUOUS
-    );
-    if (err != INA3221_OK) {
-      printf("error: %u\r\n", err);
-      continue;
-    } else {
+    err = INA3221_default_config(&h);
+    if (err != INA3221_OK)
+    {
+      printf("error config INA: %u\r\n", err);
+      continue; // Skips to next loop iteration
+    }
+    else
+    {
       printf(SUCCESS_STR);
     }
-
-    HAL_Delay(100u);
-
-    // INA die id reading
-    printf("trying to read die id...\r\n");
-    uint16_t id;
-    err = INA3221_read_reg(&h, INA3221_REG_DIE_ID, &id);
-    if (err != INA3221_OK) {
-      printf("error: %u\r\n", err);
-      continue;
-    } else {
-      printf(SUCCESS_STR);
-      printf("die id is %x in hex\r\n", id);
-    }
-
-    HAL_Delay(100u);
 
     unsigned i = 0u;
 
-    // Configs done, starts reading loop 
-    while (1) {
+    // Configs done, starts reading loop
+    while (1)
+    {
       // Each loop reads a different INA channel
       INA3221_Chan chan;
-      switch (i) {
-        case 0u:
-          chan = INA3221_CHAN_1;
-          break;
-        case 1u:
-          chan = INA3221_CHAN_2;
-          break;
-        case 2u:
-          chan = INA3221_CHAN_3;
-          break;
-        default: // unreachable
-          chan = INA3221_CHAN_1;
-          break;
+      switch (i)
+      {
+      case 0u:
+        chan = INA3221_CHAN_1;
+        break;
+      case 1u:
+        chan = INA3221_CHAN_2;
+        break;
+      case 2u:
+        chan = INA3221_CHAN_3;
+        break;
+      default: // unreachable
+        chan = INA3221_CHAN_1;
+        break;
       }
 
-      // Will read registers from channel i
       INA3221_Reg reg_bus;
       INA3221_Reg reg_shunt;
-      switch (chan) {
-        case INA3221_CHAN_1:
-          reg_bus = INA3221_REG_CHAN_1_BUS;
-          reg_shunt = INA3221_REG_CHAN_1_SHUNT;
-          break;
-        case INA3221_CHAN_2:
-          reg_bus = INA3221_REG_CHAN_2_BUS;
-          reg_shunt = INA3221_REG_CHAN_2_SHUNT;
-          break;
-        case INA3221_CHAN_3:
-          reg_bus = INA3221_REG_CHAN_3_BUS;
-          reg_shunt = INA3221_REG_CHAN_3_SHUNT;
-          break;
-        default: // unreachable
-          reg_bus = INA3221_REG_CHAN_1_BUS;
-          reg_shunt = INA3221_REG_CHAN_1_SHUNT;
-          break;
+      switch (chan)
+      {
+      case INA3221_CHAN_1:
+        reg_bus = INA3221_REG_CHAN_1_BUS;
+        reg_shunt = INA3221_REG_CHAN_1_SHUNT;
+        break;
+      case INA3221_CHAN_2:
+        reg_bus = INA3221_REG_CHAN_2_BUS;
+        reg_shunt = INA3221_REG_CHAN_2_SHUNT;
+        break;
+      case INA3221_CHAN_3:
+        reg_bus = INA3221_REG_CHAN_3_BUS;
+        reg_shunt = INA3221_REG_CHAN_3_SHUNT;
+        break;
+      default: // unreachable
+        reg_bus = INA3221_REG_CHAN_1_BUS;
+        reg_shunt = INA3221_REG_CHAN_1_SHUNT;
+        break;
       }
 
-      // Tries to read shunt voltage (current) from channel i
-      // printf("trying to read shunt voltage from channel %u\r\n", i);
-      uint16_t v;
-      err = INA3221_read_reg(&h, reg_shunt, &v);
-      if (err != INA3221_OK) {
+      // reads and prints voltage from channel i
+      float voltage;
+      err = INA3221_get_bus_voltage(&h, reg_bus, &voltage);
+      if (err != INA3221_OK)
+      {
         printf("error: %u\r\n", err);
         continue;
-      } else {
+      }
+      else
+      {
         printf(SUCCESS_STR);
       }
-      printf("current %u is %.1f ma\r\n ", i, (float)(v >> 3u) * 40e-6 * 1e3 * 1e1);
-      printf("raw current %u is %.1f ma\r\n ", i, (float)((int16_t)v >> 3u) * 40e-6 * 1e3 * 1e1);
+      printf("Voltage %u is %f V\r\n", i, voltage);
 
-
-      // Tries to read bus voltage from channel i
-      // printf("trying to read bus voltage from channel %u\r\n", i);
-      err = INA3221_read_reg(&h, reg_bus, &v);
-      if (err != INA3221_OK) {
+      // reads and prints current from channel i
+      float current;
+      err = INA3221_get_shunt_current(&h, reg_shunt, &current);
+      if (err != INA3221_OK)
+      {
         printf("error: %u\r\n", err);
         continue;
-      } else {
+      }
+      else
+      {
         printf(SUCCESS_STR);
       }
-      printf("voltage %u is %f V\r\n", i, (float)(v >> 3u) * 8e-3);
+      printf("Current %u is %f A\r\n", i, current);
 
       // Gets next i
-      i = (i+1u)%3u;
+      i = (i + 1u) % 3u;
 
       HAL_Delay(1000u);
     }
@@ -236,24 +217,24 @@ int main(void)
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * @brief System Clock Configuration
+ * @retval None
+ */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   /** Configure the main internal regulator output voltage
-  */
+   */
   if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK)
   {
     Error_Handler();
   }
 
   /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+   * in the RCC_OscInitTypeDef structure.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -270,9 +251,8 @@ void SystemClock_Config(void)
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+   */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
@@ -285,10 +265,10 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief I2C1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief I2C1 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_I2C1_Init(void)
 {
 
@@ -314,14 +294,14 @@ static void MX_I2C1_Init(void)
   }
 
   /** Configure Analogue filter
-  */
+   */
   if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
   {
     Error_Handler();
   }
 
   /** Configure Digital filter
-  */
+   */
   if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
   {
     Error_Handler();
@@ -329,14 +309,13 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
-
 }
 
 /**
-  * @brief USART2 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief USART2 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_USART2_UART_Init(void)
 {
 
@@ -364,14 +343,13 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
-
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -407,17 +385,18 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-int __io_putchar(int ch) {
-  HAL_UART_Transmit(&huart2, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
+int __io_putchar(int ch)
+{
+  HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
   return ch;
 }
 
 /* USER CODE END 4 */
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
@@ -430,12 +409,12 @@ void Error_Handler(void)
 }
 #ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
+ * @brief  Reports the name of the source file and the source line number
+ *         where the assert_param error has occurred.
+ * @param  file: pointer to the source file name
+ * @param  line: assert_param error line source number
+ * @retval None
+ */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
