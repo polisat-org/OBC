@@ -104,8 +104,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   
   // Creates handles
-     INA3221_Handle h;
-     MP2733_HandleTypeDef MP2733;
+  INA3221_Handle h;
+  MP2733_HandleTypeDef MP2733;
   while (1)
   {
     /* USER CODE END WHILE */
@@ -113,22 +113,16 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
     // Initialization and reset
-
-    // INA3221
-      // this addr val is lowkey hardcoded
-      INA3221_init(&h, &hi2c1, INA3221_ADDR_VS, 500u);
-
-      printf("trying to reset ina3221...\r\n");
-      INA3221_Error err;
-      err = INA3221_set_cfg(&h,
-        INA3221_CFG_RESET
-      );
-      if (err != INA3221_OK) {
-        printf("error init INA: %u\r\n", err);
-        continue; // commented out to allow MP2733 initialization even if INA3221 fails
-      } else {
-        printf(SUCCESS_STR);
-      }
+    INA3221_Error err = INA3221_default_init(&h, &hi2c1);
+    if (err != INA3221_OK)
+    {
+      printf("error init INA: %u\r\n", err);
+//      continue; // commented out to allow MP test even if INA fails
+    }
+    else
+    {
+      printf(SUCCESS_STR);
+    }
 
     // MP2733
       MP2733_Init(&MP2733, &hi2c1);
@@ -145,41 +139,19 @@ int main(void)
     HAL_Delay(100u);
 
     // Configuration
-
-    // INA
-      printf("trying to configure ina3221...\r\n");
-      err = INA3221_set_cfg(&h,
-        INA3221_CFG_CHAN_1
-        | INA3221_CFG_CHAN_2
-        | INA3221_CFG_CHAN_3
-        | INA3221_CFG_AVG_1
-        | INA3221_CFG_TIME_BUS_1100_US
-        | INA3221_CFG_TIME_SHUNT_1100_US
-        | INA3221_CFG_MODE_SHUNT_AND_BUS_CONTINUOUS
-      );
-      if (err != INA3221_OK) {
-        printf("error: %u\r\n", err);
-        // continue;
-      } else {
-        printf(SUCCESS_STR);
-      }
+    err = INA3221_default_config(&h);
+    if (err != INA3221_OK)
+    {
+      printf("error config INA: %u\r\n", err);
+//      continue; // commented out to allow MP test even if INA fails
+    }
+    else
+    {
+      printf(SUCCESS_STR);
+    }
 
     // MP2733
       // Configuration is already done in MP2733_Init, so no need to configure again here
-
-    HAL_Delay(100u);
-
-    // INA die id reading
-    printf("trying to read die id...\r\n");
-    uint16_t id;
-    err = INA3221_read_reg(&h, INA3221_REG_DIE_ID, &id);
-    if (err != INA3221_OK) {
-      printf("error: %u\r\n", err);
-      // continue;
-    } else {
-      printf(SUCCESS_STR);
-      printf("die id is %x in hex\r\n", id);
-    }
 
     HAL_Delay(100u);
 
@@ -204,49 +176,37 @@ int main(void)
           break;
       }
 
-      INA3221_Reg reg_bus;
-      INA3221_Reg reg_shunt;
-      switch (chan) {
-        case INA3221_CHAN_1:
-          reg_bus = INA3221_REG_CHAN_1_BUS;
-          reg_shunt = INA3221_REG_CHAN_1_SHUNT;
-          break;
-        case INA3221_CHAN_2:
-          reg_bus = INA3221_REG_CHAN_2_BUS;
-          reg_shunt = INA3221_REG_CHAN_2_SHUNT;
-          break;
-        case INA3221_CHAN_3:
-          reg_bus = INA3221_REG_CHAN_3_BUS;
-          reg_shunt = INA3221_REG_CHAN_3_SHUNT;
-          break;
-        default: // unreachable
-          reg_bus = INA3221_REG_CHAN_1_BUS;
-          reg_shunt = INA3221_REG_CHAN_1_SHUNT;
-          break;
-      }
+      // reads and prints voltage from channel i
+      float voltage;
+      err = INA3221_get_bus_voltage(&h, chan, &voltage);
 
-      // printf("trying to read shunt voltage from channel %u\r\n", i);
-      uint16_t v;
-      err = INA3221_read_reg(&h, reg_shunt, &v);
-      if (err != INA3221_OK) {
+      if (err != INA3221_OK)
+      {
         printf("error: %u\r\n", err);
-        //continue;
-      } else {
+//        continue; // commeted out to let MP read
+      }
+      else
+      {
         printf(SUCCESS_STR);
       }
 
-      printf("current %u is %.1f ma\r\n ", i, (float)(v >> 3u) * 40e-6 * 1e3 * 1e1);
-      printf("raw current %u is %.1f ma\r\n ", i, (float)((int16_t)v >> 3u) * 40e-6 * 1e3 * 1e1);
+      printf("Voltage %u is %f V\r\n", i, voltage);
 
-      // printf("trying to read bus voltage from channel %u\r\n", i);
-      err = INA3221_read_reg(&h, reg_bus, &v);
-      if (err != INA3221_OK) {
+      // reads and prints current from channel i
+      float current;
+      err = INA3221_get_shunt_current(&h, chan, &current);
+
+      if (err != INA3221_OK)
+      {
         printf("error: %u\r\n", err);
-        // continue;
-      } else {
+//        continue; // commented out to let MP read
+      }
+      else
+      {
         printf(SUCCESS_STR);
       }
-      printf("voltage %u is %f V\r\n", i, (float)(v >> 3u) * 8e-3);
+      
+      printf("Current %u is %f mA\r\n", i, current);
 
       i = (i+1u)%3u;
 

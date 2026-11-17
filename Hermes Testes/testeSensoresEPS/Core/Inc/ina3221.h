@@ -8,7 +8,7 @@
 
 
 // Constants
-// Registers
+
 #define INA3221_REG_CFG              (0x00) // read and write
 #define INA3221_REG_CHAN_1_SHUNT     (0x01) // only read
 #define INA3221_REG_CHAN_1_BUS       (0x02) // only read
@@ -31,7 +31,6 @@
 #define INA3221_REG_DIE_ID           (0xFF) // only read
 #define INA3221_REG_NONE             (0xFD) // doesn't exist
 
-// Configuration register bits
 #define INA3221_CFG_RESET                           (1u<<15)
 #define INA3221_CFG_CHAN_1                          (1u<<14)
 #define INA3221_CFG_CHAN_2                          (1u<<13)
@@ -68,7 +67,6 @@
 #define INA3221_CFG_MODE_BUS_CONTINUOUS             (6u<<0)
 #define INA3221_CFG_MODE_SHUNT_AND_BUS_CONTINUOUS   (7u<<0)
 
-// Addresses (hardcoded)
 #define INA3221_ADDR_GND (0x40)
 #define INA3221_ADDR_VS  (0x41)
 #define INA3221_ADDR_SDA (0x42)
@@ -108,7 +106,6 @@ typedef struct INA3221_Handle {
 
 // Prototypes
 
-// Initializes INA handle with I2C handle, device address, and timeout in millisecond
 INA3221_Error
 INA3221_init(INA3221_Handle *h,
     INA3221_I2C_Handle *i2c_handle,
@@ -116,7 +113,15 @@ INA3221_init(INA3221_Handle *h,
     uint32_t timeout_ms
 );
 
-// 
+INA3221_Error
+INA3221_default_init(INA3221_Handle *h,
+    INA3221_I2C_Handle *i2c_handle
+);
+
+INA3221_Error 
+INA3221_default_config(INA3221_Handle *h
+);
+
 INA3221_Error
 INA3221_set_reg(INA3221_Handle *h,
     INA3221_Reg reg
@@ -145,10 +150,15 @@ INA3221_set_cfg(INA3221_Handle *h,
 );
 
 INA3221_Error
-INA3221_read_voltage(INA3221_Handle *h,
+INA3221_get_bus_voltage(INA3221_Handle *h,
     INA3221_Chan chan,
-    INA3221_VoltageType type,
-    int16_t *out_voltage
+    float* voltage
+);
+
+INA3221_Error
+INA3221_get_shunt_current(INA3221_Handle *h,
+    INA3221_Chan chan,
+    float* current
 );
 
 #endif // INA_3221_H
