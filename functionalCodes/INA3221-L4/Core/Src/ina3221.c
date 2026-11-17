@@ -185,48 +185,6 @@ INA3221_set_cfg(INA3221_Handle *h,
     return INA3221_write_reg(h, INA3221_REG_CFG, cfg);
 }
 
-INA3221_Error
-INA3221_read_voltage(INA3221_Handle *h,
-    INA3221_Chan chan,
-    INA3221_VoltageType type,
-    int16_t *out_voltage
-)
-{
-    if (h == NULL || out_voltage == NULL) {
-        return INA3221_ERROR_NULL;
-    }
-
-    INA3221_Reg reg;
-    switch (chan) {
-        case INA3221_CHAN_1:
-            reg = (type == INA3221_VOLTAGE_TYPE_BUS) ? INA3221_REG_CHAN_1_BUS : INA3221_REG_CHAN_1_SHUNT;
-            break;
-        case INA3221_CHAN_2:
-            reg = (type == INA3221_VOLTAGE_TYPE_BUS) ? INA3221_REG_CHAN_2_BUS : INA3221_REG_CHAN_2_SHUNT;
-            break;
-        case INA3221_CHAN_3:
-            reg = (type == INA3221_VOLTAGE_TYPE_BUS) ? INA3221_REG_CHAN_3_BUS : INA3221_REG_CHAN_3_SHUNT;
-            break;
-        default:
-            return INA3221_ERROR_NULL;
-    }
-
-    uint16_t val = 0u;
-    INA3221_Error err = INA3221_read_reg(h, reg, &val);
-    if (err != INA3221_OK) {
-        return err;
-    }
-
-    uint32_t raw = val >> 3u;
-    
-    // check for sign bit
-    if (raw & (1u<<12u)) {
-        raw = raw & 0xFFF;
-    }
-
-    return INA3221_OK;
-}
-
 INA3221_Error INA3221_get_bus_voltage(INA3221_Handle* h, INA3221_Chan chan, float* voltage) {
     INA3221_Reg reg_bus;
     switch (chan) {

@@ -150,13 +150,6 @@ INA3221_set_cfg(INA3221_Handle *h,
 );
 
 INA3221_Error
-INA3221_read_voltage(INA3221_Handle *h,
-    INA3221_Chan chan,
-    INA3221_VoltageType type,
-    int16_t *out_voltage
-);
-
-INA3221_Error
 INA3221_get_bus_voltage(INA3221_Handle *h,
     INA3221_Chan chan,
     float* voltage

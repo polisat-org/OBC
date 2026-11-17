@@ -157,31 +157,9 @@ int main(void)
         break;
       }
 
-      INA3221_Reg reg_bus;
-      INA3221_Reg reg_shunt;
-      switch (chan)
-      {
-      case INA3221_CHAN_1:
-        reg_bus = INA3221_REG_CHAN_1_BUS;
-        reg_shunt = INA3221_REG_CHAN_1_SHUNT;
-        break;
-      case INA3221_CHAN_2:
-        reg_bus = INA3221_REG_CHAN_2_BUS;
-        reg_shunt = INA3221_REG_CHAN_2_SHUNT;
-        break;
-      case INA3221_CHAN_3:
-        reg_bus = INA3221_REG_CHAN_3_BUS;
-        reg_shunt = INA3221_REG_CHAN_3_SHUNT;
-        break;
-      default: // unreachable
-        reg_bus = INA3221_REG_CHAN_1_BUS;
-        reg_shunt = INA3221_REG_CHAN_1_SHUNT;
-        break;
-      }
-
       // reads and prints voltage from channel i
       float voltage;
-      err = INA3221_get_bus_voltage(&h, reg_bus, &voltage);
+      err = INA3221_get_bus_voltage(&h, chan, &voltage);
       if (err != INA3221_OK)
       {
         printf("error: %u\r\n", err);
@@ -195,7 +173,7 @@ int main(void)
 
       // reads and prints current from channel i
       float current;
-      err = INA3221_get_shunt_current(&h, reg_shunt, &current);
+      err = INA3221_get_shunt_current(&h, chan, &current);
       if (err != INA3221_OK)
       {
         printf("error: %u\r\n", err);
@@ -205,7 +183,7 @@ int main(void)
       {
         printf(SUCCESS_STR);
       }
-      printf("Current %u is %f A\r\n", i, current);
+      printf("Current %u is %f mA\r\n", i, current);
 
       // Gets next i
       i = (i + 1u) % 3u;
