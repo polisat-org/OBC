@@ -1,4 +1,5 @@
 #include  "DS3231.h"
+#include <string.h>
 
 
 extern I2C_HandleTypeDef hi2c1;
@@ -40,9 +41,11 @@ void Set_Time (uint8_t sec, uint8_t min, uint8_t hour, uint8_t dow, uint8_t dom,
 
 void Get_Time (uint8_t *Get_Sec , uint8_t *Get_min ,uint8_t *Get_hour,uint8_t *Get_day ,uint8_t *Get_date,uint8_t *Get_month ,uint8_t *Get_year)
 {                      //struct use here//
-	uint8_t get_time[7];
+	uint8_t get_time[7] = {0};
 
-	HAL_I2C_Mem_Read(&hi2c1, DS3231_ADDRESS, 0x00, 1, get_time, 7, 1000);
+	if (HAL_I2C_Mem_Read(&hi2c1, DS3231_ADDRESS, 0x00, 1, get_time, 7, 1000) != HAL_OK) {
+		memset(get_time, 0, sizeof(get_time));   /* RTC ausente: zeros, não lixo da pilha */
+	}
 	//(para1:which i2c,para2:target add,para3:internal mem add,para4:mem add size,para5:p data,para6:size data,para7:time out)
 	*Get_Sec = bcdToDec(get_time[0]);
 	*Get_min= bcdToDec(get_time[1]);

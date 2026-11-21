@@ -81,7 +81,13 @@ tmFile.write(`pc_time_iso,${TELEMETRY_FIELDS.join(',')},hex\n`);
 
 // --------------------------------------------------------------------- SSE
 const clients = new Set();
-const send = (res, event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+// Cliente que parou de ler (aba em segundo plano, conexão morta) não pode acumular estado na
+// memória: atrasado pula atualizações; travado (> 8 MB na fila) é desconectado e o navegador reconecta.
+const send = (res, event, data) => {
+  if (res.writableLength > 8e6) { clients.delete(res); res.destroy(); return; }
+  if (res.writableLength > 1e6 && event === 'state') return;
+  res.write(`event: ${event}\ndata: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`);
+};
 function event(text, tone = 'info') {
   const e = { t: now(), text, tone };
   S.timeline = [...S.timeline, e].slice(-400);
@@ -100,7 +106,7 @@ function changed() {
   pending = setTimeout(() => {
     pending = null;
     S.checks = computeChecks(S, now());
-    const snap = snapshot();
+    const snap = JSON.stringify(snapshot());
     for (const c of clients) send(c, 'state', snap);
   }, 80);
 }

@@ -632,7 +632,9 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 void initializeEverything(BME280_HandleTypeDef *BMEBat) {
-	Set_Time(0, 0, 0, 0, 0, 0, 0);
+	/* Relógio zerado a cada boot = tempo desde que o OBC ligou. Dia/mês começam em 1 (0 não é data válida no DS3231):
+	 * a telemetria mostra 01/01/00 00:00:00 no boot. */
+	Set_Time(0, 0, 0, 1, 1, 1, 0);
 	BME280_initDefault(BMEBat, hi2c1);
 	BME280_setOversampling(BMEBat, BME280_OS_16x, PSSR); // talvez devesse ser ALL aqui ao invés de PSSR
 }
@@ -874,6 +876,8 @@ void StartMainTask(void *argument)
 	bool missionActive = false;
 
 	osTimerStart(HkTickTimerHandle, pdMS_TO_TICKS(60000));
+	/* primeira telemetria logo no boot (sem esperar 60 s): mostra ao solo que o OBC está vivo */
+	osThreadFlagsSet(housekeepTaskHandle, TASK_START_FLAG);
 	debugPrintf("[%08lu] main ready, mode=%u heap_livre=%u\r\n",
 			osKernelGetTickCount(), (unsigned int)mode, (unsigned int)xPortGetFreeHeapSize());
 
@@ -980,7 +984,10 @@ void StartHousekeepTask(void *argument)
 	  }
 	  telemetryPacket.umidade = BMEBat.READ.HMDT;
 	  telemetryPacket.pressao = BMEBat.READ.PSSR;
-	  Get_Time(&telemetryPacket.segundo, &telemetryPacket.minuto, &telemetryPacket.hora, &telemetryPacket.dia, NULL, &telemetryPacket.mes, &telemetryPacket.ano);
+	  /* DS3231: o 4º registro é o dia da SEMANA e o 5º o dia do MÊS (antes ia NULL no 5º: escrita no endereço 0
+	   * e o dia da semana no campo dia). Sem resposta do RTC no I2C, os campos vão zerados. */
+	  uint8_t diaSemana;
+	  Get_Time(&telemetryPacket.segundo, &telemetryPacket.minuto, &telemetryPacket.hora, &diaSemana, &telemetryPacket.dia, &telemetryPacket.mes, &telemetryPacket.ano);
 	  telemetryPacket.deploy_antena = antennaDeployed ? 1U : 0U;
 	  /* último azimute recebido do ADCS ("270.5" + '\0'); vazio se nunca chegou */
 	  memcpy(telemetryPacket.angulo_apontamento, g_azimute, sizeof(telemetryPacket.angulo_apontamento));
