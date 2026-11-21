@@ -1,2 +1,5 @@
 logs/
 stm32/build/
+web/sons/*.mp3
+web/sons/*.ogg
+web/sons/*.wav

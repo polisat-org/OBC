@@ -1,0 +1,6 @@
+Som do aviso de avião do painel.
+
+Coloque aqui um arquivo chamado aviao.mp3 (ou aviao.ogg / aviao.wav) com o áudio que quiser tocar
+quando um avião novo aparecer. Sem arquivo, o painel toca uma fanfarra curta gerada no navegador.
+
+Os arquivos de áudio desta pasta não vão para o git (.gitignore): use só áudio que você tem direito de usar.

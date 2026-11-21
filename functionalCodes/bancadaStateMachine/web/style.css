@@ -286,3 +286,19 @@ h3.sub { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; colo
 .legenda { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: var(--text-secondary); }
 .legenda span { display: inline-flex; align-items: center; gap: 7px; }
 .legenda i { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+
+/* ------------------------------------------------------------------- ADCS */
+.bussola-wrap { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 20px; align-items: center; }
+@media (max-width: 700px) { .bussola-wrap { grid-template-columns: 1fr; } }
+.bussola { width: 100%; height: auto; }
+.bussola .aro { fill: #0b0b0c; stroke: #3a3d44; stroke-width: 2; }
+.bussola .tick { stroke: #4a4d55; } .bussola .tick.m { stroke: #8c8b83; stroke-width: 2; }
+.bussola .lbl { fill: var(--text-secondary); font: 600 12px var(--sans); }
+.bussola .agulha { stroke: var(--series-1); stroke-width: 4; stroke-linecap: round; }
+.bussola .ponta { fill: var(--series-1); }
+.bussola .rastro { fill: var(--series-1); opacity: .25; }
+.az-lado .v { font-size: 46px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.az-lado .v small { font-size: 18px; color: var(--text-secondary); font-weight: 400; }
+.az-lado .d { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+.adcs-est { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.adcs-est .fact .v.on { color: #6ad46a; }

@@ -6,8 +6,8 @@ export const MODES = ['IDLE', 'MISSION', 'DETUMBLING', 'POINTING']; // SatMode_t
 export const MODE_INFO = {
   IDLE: { titulo: 'Repouso', texto: 'Só Main, Housekeeping e Receive ativas, esperando comandos.' },
   MISSION: { titulo: 'Missão ADS-B', texto: 'Payload ligado (comando LIGAR pela UART): o Pi manda os aviões e o OBC repassa ao TT&C.' },
-  DETUMBLING: { titulo: 'Detumbling', texto: 'ADCS reduzindo a rotação (task esqueleto: roda e termina).' },
-  POINTING: { titulo: 'Apontamento', texto: 'Busca de azimute. Ainda não tem task: só muda o modo.' },
+  DETUMBLING: { titulo: 'Detumbling', texto: 'OBC mandou 1 ao ADCS: a roda tira a rotação; só termina com o comando 2.' },
+  POINTING: { titulo: 'Apontamento', texto: 'OBC mandou 3 ao ADCS: busca de azimute pelos LDRs, um valor por segundo.' },
 };
 
 export const TC_BITS = [
@@ -24,7 +24,7 @@ export const TASKS = [
   { id: 'transmit', name: 'Transmit', papel: 'envia a telemetria ao TT&C', prio: 'Low' },
   { id: 'receive', name: 'Receive', papel: 'trata erros da UART do TT&C', prio: 'Low' },
   { id: 'deploy', name: 'Deploy', papel: 'abre a antena (esqueleto)', prio: 'Low' },
-  { id: 'detumbling', name: 'Detumbling', papel: 'liga o ADCS (esqueleto)', prio: 'Low' },
+  { id: 'detumbling', name: 'Detumbling', papel: 'gerencia o ADCS (comandos 1–4, azimute)', prio: 'Low' },
   { id: 'mission', name: 'Mission', papel: 'gerencia o payload (USART3)', prio: 'Low' },
 ];
 
@@ -35,7 +35,7 @@ export const TTC_STEP_SECONDS = 15;
 export const TTC_SCRIPT = [
   { tc: 0x00, desc: 'Solo: tudo desligado', expect: [], info: 'nada a mudar' },
   { tc: 0x04, desc: 'Liga detumbling', expect: [/detumbling ON/, /detumbling task ran/, /detumbling done, mode=0/] },
-  { tc: 0x00, desc: 'Desliga tudo', expect: [], info: 'o detumbling já tinha terminado (task esqueleto)' },
+  { tc: 0x00, desc: 'Desliga tudo (encerra o detumbling)', expect: [] },
   { tc: 0x08, desc: 'Liga pointing (azimute)', expect: [/pointing ON/] },
   { tc: 0x00, desc: 'Desliga pointing', expect: [/pointing STOP/] },
   { tc: 0x01, desc: 'Liga missão ADS-B', expect: [/mission ON/, /mission task ran/, /mission done, mode=0/] },
@@ -110,6 +110,27 @@ export const DEBUG_RULES = [
   // ---- payload HERMES (task Mission)
   { re: /pld ligar/, kind: 'pld', task: 'mission', pl: (p, m, t) => { p.gpio = 'ligado'; p.lastOnAt = t; p.semDados = null; p.continua = /continua/.test(m.input); },
     say: (m) => (/continua/.test(m.input) ? 'Bancada: payload ligado no boot (missão contínua: o SDR ouve sem parar)' : 'Payload: comando LIGAR pela UART (PB10 → RX0 do Pi), repetido a cada 2 s'), tone: 'state' },
+  // ---- ADCS (task Detumbling)
+  { re: /adcs tx (\d) \(([^)]+)\)/, kind: 'adcs', task: 'detumbling',
+    pl: (p, m, t, S) => { const a = S.adcs; const c = +m[1]; a.ultimoCmd = { c, texto: m[2], at: t }; a.cmds++;
+      if (c === 1) a.detumbling = true; if (c === 2) a.detumbling = false; if (c === 3) { a.busca = true; a.buscaDesde = t; } if (c === 4) a.busca = false; },
+    say: (m) => `ADCS: comando ${m[1]} enviado (${m[2]})`, tone: 'state' },
+  { re: /adcs est det=(\d) busca=(\d) falha=(\d)/, kind: 'adcs', task: 'detumbling',
+    pl: (p, m, t, S) => { const a = S.adcs; a.est = { det: m[1] === '1', busca: m[2] === '1', falha: +m[3] }; a.estAt = t; a.estN = (a.estN ?? 0) + 1; }, say: null },
+  { re: /adcs sem resposta ha (\d+) s \(falha (\d+)\/(\d+)\)/, kind: 'adcs', task: 'detumbling',
+    pl: (p, m, t, S) => { S.adcs.falhas = +m[2]; }, say: (m) => `ADCS sem resposta há ${m[1]} s (falha ${m[2]}/${m[3]})`, tone: 'bad' },
+  { re: /adcs divergente: pedido det=(\d) busca=(\d), adcs det=(\d) busca=(\d) \(falha (\d+)\/(\d+)\)/, kind: 'adcs', task: 'detumbling',
+    pl: (p, m, t, S) => { S.adcs.falhas = +m[5]; }, say: (m) => `ADCS divergente do pedido (det ${m[3]}≠${m[1]} ou busca ${m[4]}≠${m[2]}): reenviando (falha ${m[5]}/${m[6]})`, tone: 'warn' },
+  { re: /adcs reinicia #(\d+)/, kind: 'adcs', task: 'detumbling',
+    pl: (p, m, t, S) => { S.adcs.reinicios = +m[1]; S.adcs.reinicioAt = t; S.adcs.falhas = 0; }, say: (m) => `OBC reiniciou o ADCS (#${m[1]}) depois de 5 falhas seguidas: ${/RST/.test(m.input) ? 'comando 5 + pulso no RST' : 'comando 5'}`, tone: 'bad' },
+  { re: /adcs pos-reinicio: reenvia det=(\d) busca=(\d)/, kind: 'adcs', task: 'detumbling', say: (m) => `ADCS reiniciado: OBC reenviou o pedido (detumbling ${m[1]}, busca ${m[2]})`, tone: 'state' },
+  { re: /adcs falha (\d): /, kind: 'adcs', task: 'detumbling',
+    pl: (p, m, t, S) => { S.adcs.falhaAdcs = +m[1]; }, say: (m) => `ADCS desligou o motor por proteção (${['', 'sobrevelocidade', 'giroscópio', 'ESCON', 'sem giroscópio'][+m[1]] || m[1]}); o OBC não religa`, tone: 'bad' },
+  { re: /adcs ok de novo/, kind: 'adcs', task: 'detumbling', pl: (p, m, t, S) => { S.adcs.falhas = 0; }, say: () => 'ADCS respondendo de novo (falhas zeradas)', tone: 'good' },
+  { re: /adcs boot do OBC/, kind: 'adcs', task: 'detumbling', say: () => 'OBC ligou: mandou 2 e 4 ao ADCS (estado conhecido)', tone: 'muted' },
+  { re: /adcs az=(\d{3}\.\d)/, kind: 'adcs', task: 'detumbling',
+    pl: (p, m, t, S) => { const a = S.adcs; a.az = parseFloat(m[1]); a.azAt = t; a.azN++; a.azHist = [...a.azHist, { t, az: a.az }].slice(-600); },
+    say: (m) => `Azimute do ADCS: ${m[1]}° (repassado ao TT&C no quadro 'Z')`, tone: 'tm' },
   { re: /pld desligar ignorado/, kind: 'pld', task: 'mission', say: () => 'Bancada: DESLIGAR do TT&C ignorado (missão contínua, payload segue ligado)', tone: 'muted' },
   { re: /tcs trailer invalido \((\d+)\)/, kind: 'pld', task: 'mission', pl: (p, m) => { p.tcsRuins = Number(m[1]); }, say: (m) => `Trailer térmico com CRC inválido (${m[1]} no total)`, tone: 'bad' },
   { re: /tcs t=(-?\d+),(-?\d+),(-?\d+),(-?\d+) duty=(\d+),(\d+) sit=(\d+),(\d+) idade=(\d+) valido=(\d)/, kind: 'tcs', task: 'mission',
@@ -225,6 +246,34 @@ export function computeChecks(s, now) {
     pl.descartadosTotal ? `${pl.descartadosTotal} registros implausíveis descartados (ruído na UART?)` : 'nenhum registro implausível');
   if (pl.downlinks) add('Payload (Raspberry)', 'Aviões repassados ao TT&C', 'ok', `${pl.downlinks} quadros 'P' (último com ${pl.lastDownlink.n} aviões, ${pl.lastDownlink.bytes} B)`);
   else if (pl.blocks) add('Payload (Raspberry)', 'Aviões repassados ao TT&C', 'pending', "um quadro 'P' a cada 5 s com a missão ligada", '');
+  // ADCS (Arduino Nano)
+  const ad = s.adcs;
+  if (ad.cmds) add('ADCS', 'OBC manda comandos ao ADCS', 'ok', `${ad.cmds} comandos (último: ${ad.ultimoCmd.c}, ${ad.ultimoCmd.texto}, há ${secs(ad.ultimoCmd.at)} s)`);
+  else add('ADCS', 'OBC manda comandos ao ADCS', 'pending', 'saem quando o TT&C liga/desliga Detumbling (1/2) ou Pointing (3/4)', '');
+  const FALHA = ['', 'sobrevelocidade', 'giroscópio', 'ESCON', 'giroscópio ausente no boot'];
+  if (ad.estAt && now - ad.estAt < 6000) add('ADCS', 'ADCS respondendo (estado a cada 2 s)', ad.est.falha ? 'warn' : 'ok',
+    `detumbling ${ad.est.det ? 'ligado' : 'desligado'}, busca ${ad.est.busca ? 'ativa' : 'parada'}${ad.est.falha ? `, falha: ${FALHA[ad.est.falha]}` : ''}; último há ${secs(ad.estAt)} s`);
+  else if (ad.estAt) add('ADCS', 'ADCS respondendo (estado a cada 2 s)', 'fail', `sem estado há ${secs(ad.estAt)} s (falhas ${ad.falhas ?? 0}/5)`, 'Com 5 falhas o OBC reinicia o ADCS (comando 5 e pulso no RST pelo D7).');
+  else add('ADCS', 'ADCS respondendo (estado a cada 2 s)', ad.falhas ? 'fail' : 'pending', ad.falhas ? `nenhum estado recebido (falhas ${ad.falhas}/5)` : 'aguardando o primeiro estado "SDBF!"',
+    'O ADCS precisa do firmware v2 (manda "SDBF!"). Confira também D11 → A1 e D12 ← A0.');
+  if (ad.reinicios) add('ADCS', 'Reinícios do ADCS pelo OBC', 'warn', `${ad.reinicios} (último há ${secs(ad.reinicioAt)} s)`);
+  if (ad.azN) add('ADCS', 'Azimute chegando do ADCS', 'ok', `${ad.azN} valores; último ${ad.az.toFixed(1)}° há ${secs(ad.azAt)} s`);
+  else if (ad.busca && now - ad.buscaDesde > 5000) add('ADCS', 'Azimute chegando do ADCS', 'warn', `busca ativa há ${secs(ad.buscaDesde)} s e nenhum valor`,
+    'O ADCS só manda com luz suficiente nos LDRs. Sem luz, nada sai. Confira também: D11 do Nano → A1 (PA1), D12 ← A0 (PA0), GND comum, e o "# OBC: comando 3" no USB do Nano.');
+  else add('ADCS', 'Azimute chegando do ADCS', 'pending', 'chega 1 vez por segundo durante a busca (Pointing), com luz', '');
+
+  const u = ad.usb;
+  if (u && u.com) {
+    if (!u.connected) add('ADCS', `USB do Nano (${u.com})`, 'fail', 'porta não abriu', 'Confira o cabo USB do Nano e se a porta não está aberta no Arduino IDE.');
+    else if (u.estadoAt) add('ADCS', 'Nano respondendo pelo USB', 'ok', `giroscópio ${u.giroOk ? 'ok' : 'COM FALHA'} · ω ${u.omega?.toFixed(1)} rpm · ESCON ${u.escon ? 'pronto' : 'sem Ready'} · último az ${u.ultimoAzNano}`);
+    else add('ADCS', 'Nano respondendo pelo USB', 'fail', 'o Nano não respondeu ao "?" (status)', 'Baud do USB 115200; confira se o firmware do ADCS está gravado no Nano e se o Arduino IDE não está com a porta aberta.');
+    if (!u.connected) { /* porta fechada: já reportado acima */ } else if (u.cmdsRecebidos) add('ADCS', 'Nano confirma os comandos do OBC (A0 → D12)', 'ok', `${u.cmdsRecebidos} "# OBC: comando" no USB do Nano`);
+    else if (ad.cmds) add('ADCS', 'Nano confirma os comandos do OBC (A0 → D12)', 'fail', `o OBC mandou ${ad.cmds} comandos e o Nano não confirmou nenhum`,
+      'Confira o fio A0 (PA0, TX do OBC) → D12 do Nano e o GND comum.');
+    else add('ADCS', 'Nano confirma os comandos do OBC (A0 → D12)', 'pending', 'aguardando o primeiro comando', '');
+    if (u.erro) add('ADCS', 'ADCS sem erro', 'fail', u.erro, 'Ver a tabela de mensagens de erro no README do ADCS.');
+  }
+
   // Controle térmico das baterias (TCS no Pi, modo observação)
   if (pl.tcs) {
     const idade = secs(pl.tcs.at);

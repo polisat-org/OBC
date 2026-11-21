@@ -28,6 +28,7 @@
     <a href="#visao" role="tab" data-tab="visao">Visão geral</a>
     <a href="#ttc" role="tab" data-tab="ttc">Comandos do TT&amp;C <span class="badge" id="b-ttc"></span></a>
     <a href="#payload" role="tab" data-tab="payload">Payload <span class="badge" id="b-pld"></span></a>
+    <a href="#adcs" role="tab" data-tab="adcs">ADCS <span class="badge" id="b-adcs"></span></a>
     <a href="#termico" role="tab" data-tab="termico">Térmico <span class="badge" id="b-tcs"></span></a>
     <a href="#telemetria" role="tab" data-tab="telemetria">Telemetria <span class="badge" id="b-tm"></span></a>
     <a href="#ligacoes" role="tab" data-tab="ligacoes">Ligações e pinos <span class="badge" id="b-pins"></span></a>
@@ -100,6 +101,34 @@
           <li><b>Validação:</b> o bloco não tem CRC; o OBC descarta registros com ICAO fora de 24 bits ou posição impossível.</li>
           <li><b>Downlink:</b> a cada 5 s o OBC manda ao TT&amp;C um quadro <b>'P'</b> com 28 B por avião (ICAO, lat, lon, altitude, velocidade, rumo, tempo da posição).</li>
           <li><b>Desligar:</b> TC sem o bit Missão; o OBC manda <code>A5 5A 00 FF</code> três vezes. Nenhum GPIO é usado.</li>
+        </ul>
+      </article>
+    </section>
+
+    <!-- ============================================================ ADCS -->
+    <section class="tab" id="tab-adcs" hidden>
+      <div class="cols-2">
+        <article class="card">
+          <header class="card-h"><h2>Azimute (fonte de luz)</h2><span class="hint" id="adcs-meta"></span></header>
+          <div class="bussola-wrap"><svg class="bussola" id="bussola" viewBox="0 0 300 300" role="img" aria-label="Bússola com o último azimute"></svg>
+            <div class="az-lado" id="az-lado"></div></div>
+        </article>
+        <article class="card">
+          <header class="card-h"><h2>Comandos ao ADCS</h2><span class="hint">USART2 na PCB · UART4 (A0/A1) na bancada · 9600</span></header>
+          <div class="adcs-est" id="adcs-est"></div>
+          <h3 class="sub">Rotação medida pelo ADCS <span class="hint" id="omega-meta">(USB do Nano, 10 Hz durante o detumbling)</span></h3>
+          <svg class="tgraf" id="omega-graf" viewBox="0 0 600 200" role="img" aria-label="Rotação do corpo em rpm"></svg>
+          <h3 class="sub">Últimos azimutes recebidos</h3>
+          <ol class="feed" id="az-hist"></ol>
+        </article>
+      </div>
+      <article class="card">
+        <header class="card-h"><h2>Como funciona</h2></header>
+        <ul class="tips">
+          <li><b>Detumbling:</b> o TT&amp;C liga o bit Detumbling (0x04); o OBC manda o byte <code>1</code> ao Nano, que liga a roda de reação. O ADCS <b>não avisa</b> o fim: o controle segue até o TT&amp;C tirar o bit, quando o OBC manda <code>2</code>.</li>
+          <li><b>Azimute:</b> o bit Pointing (0x08) faz o OBC mandar <code>3</code>; o Nano lê os 4 LDRs e, com luz suficiente, manda 1 vez por segundo 5 caracteres (<code>270.5</code>). Tirar o bit manda <code>4</code>.</li>
+          <li><b>No OBC:</b> o valor vai para <code>angulo_apontamento</code> da telemetria e, na hora, ao TT&amp;C num quadro <b>'Z'</b> + 5 caracteres. A leitura procura o padrão <code>ddd.d</code> nos últimos 5 bytes, então se realinha sozinha se perder um byte.</li>
+          <li>Cada comando sai 2 vezes (20 ms) porque o SoftwareSerial do Nano pode perder um byte enquanto transmite. O OBC <b>não</b> reenvia periodicamente: se o ADCS desligar a roda por proteção, ela não é religada sozinha.</li>
         </ul>
       </article>
     </section>

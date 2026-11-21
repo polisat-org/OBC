@@ -14,7 +14,7 @@ const check = (label) => S.checks.find((c) => c.label === label);
 let S = null;
 
 // --------------------------------------------------------------------- abas
-const TABS = ['visao', 'ttc', 'payload', 'termico', 'telemetria', 'ligacoes', 'log'];
+const TABS = ['visao', 'ttc', 'payload', 'adcs', 'termico', 'telemetria', 'ligacoes', 'log'];
 function showTab() {
   const t = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'visao';
   for (const id of TABS) $(`tab-${id}`).hidden = id !== t;
@@ -65,6 +65,13 @@ function wires() {
     { a: 'D6 · PB10', aSub: 'USART3_TX · CN10 pino 25', dir: '→', b: 'pino 10', bSub: 'GPIO15 · RX0 do Pi', sig: 'LIGAR / DESLIGAR', color: '#eb6834',
       st: pl.blocks && pl.lastOnAt ? 'ok' : pl.semDados ? 'fail' : pl.gpio ? 'info' : 'pending',
       txt: pl.blocks && pl.lastOnAt ? 'ok: o Pi começou a mandar depois do LIGAR' : pl.semDados ? 'LIGAR enviado e nada voltou: confira este fio, o pino 8 → PB11 e o GND' : pl.gpio === 'ligado' ? `LIGAR enviado ${ago(pl.lastOnAt, n)}; o 1º bloco leva até ~20 s (o dump1090 sobe primeiro)` : 'comando A5 5A 01 FE quando o TT&C manda o bit Missão' },
+    { sec: 'ADCS (UART4 na bancada, 9600 8N1): Nucleo ↔ Arduino Nano (USART2 PA2/PA3 na PCB)' },
+    { a: 'A0 · PA0', aSub: 'UART4_TX', dir: '→', b: 'D12', bSub: 'RX do Nano (SoftwareSerial)', sig: 'comandos 1–4', color: '#9085e9',
+      st: S.adcs.cmds ? 'info' : 'pending', txt: S.adcs.cmds ? `${S.adcs.cmds} comandos enviados; confirme no USB do Nano ("# OBC: comando N")` : 'sai quando o TT&C liga/desliga Detumbling ou Pointing' },
+    { a: 'A1 · PA1', aSub: 'UART4_RX', dir: '←', b: 'D11', bSub: 'TX do Nano (5 V)', sig: 'azimute "ddd.d"', color: '#199e70',
+      st: S.adcs.azN ? 'ok' : S.adcs.busca && n - S.adcs.buscaDesde > 5000 ? 'warn' : 'pending',
+      txt: S.adcs.azN ? `${S.adcs.azN} valores recebidos` : S.adcs.busca ? 'busca ativa e nada chegou: sem luz nos LDRs, fio trocado ou sem GND' : 'chega durante a busca (Pointing), com luz' },
+    { a: 'GND', aSub: 'qualquer GND', dir: '—', b: 'GND', bSub: 'do Nano', sig: 'referência', color: '#8c8b83', st: S.adcs.azN ? 'ok' : 'info', txt: 'obrigatório' },
     { sec: 'Sensores (I2C1): Nucleo ↔ BME280 e DS3231' },
     { a: 'D15', aSub: 'PB8 · I2C1_SCL', dir: '→', b: 'SCL', bSub: 'BME280 e DS3231', sig: 'clock I2C', color: '#199e70', st: i2cSt, txt: i2cTxt },
     { a: 'D14', aSub: 'PB9 · I2C1_SDA', dir: '↔', b: 'SDA', bSub: 'BME280 e DS3231', sig: 'dados I2C', color: '#1baf7a', st: i2cSt, txt: i2cTxt },
@@ -91,6 +98,8 @@ function renderTop() {
   badge('b-tm', S.telemetry.count ? 'ok' : '', S.telemetry.count || '');
   const pl = S.payload;
   badge('b-pld', pl.semDados && !pl.blocks ? 'fail' : pl.blocks ? 'ok' : '', pl.semDados && !pl.blocks ? '!' : pl.blocks || '');
+  const ad = S.adcs;
+  badge('b-adcs', ad.azN ? 'ok' : '', ad.azN ? ad.az.toFixed(0) + '°' : '');
   const tf = S.checks.filter((c) => c.group === 'Controle térmico (TCS)' && c.status === 'fail').length;
   badge('b-tcs', tf ? 'fail' : pl.tcs ? 'ok' : '', tf ? '!' : pl.tcs ? '✓' : '');
 }
@@ -135,6 +144,11 @@ function renderSummary() {
   else if (pl.semDados) cards.splice(2, 0, ['fail', 'Payload', 'sem dados', 'missão ligada e o Pi não mandou nada', 'payload']);
   else if (pl.gpio === 'ligado') cards.splice(2, 0, ['pending', 'Payload', 'ligando', `LIGAR enviado ${ago(pl.lastOnAt, n)}; 1º bloco em até ~20 s`, 'payload']);
   else cards.splice(2, 0, ['pending', 'Payload', 'desligado', 'liga com o bit Missão do TT&C', 'payload']);
+  const ad = S.adcs;
+  cards.splice(3, 0, ad.azN
+    ? ['ok', 'ADCS', `${ad.az.toFixed(1)}°`, `azimute ${ago(ad.azAt, n)} · detumbling ${ad.detumbling ? 'ligado' : 'desligado'}`, 'adcs']
+    : ad.cmds ? ['pending', 'ADCS', ad.busca ? 'buscando' : ad.detumbling ? 'detumbling' : 'parado', `último comando ${ad.ultimoCmd.c} ${ago(ad.ultimoCmd.at, n)}`, 'adcs']
+      : ['pending', 'ADCS', 'aguardando', 'comandos saem com Detumbling/Pointing', 'adcs']);
   const tc = pl.tcs;
   if (tc && S.now - tc.at < 15000) {
     const v = tc.sondas.filter((x) => x != null);
@@ -390,6 +404,67 @@ function renderMap() {
   $('pld-map').innerHTML = g;
 }
 
+// -------------------------------------------------------------------- ADCS
+function renderAdcs() {
+  const a = S.adcs;
+  const n = S.now;
+  $('adcs-meta').textContent = a.azN ? `${a.azN} valores · último ${ago(a.azAt, n)} · ${a.zFrames} quadros 'Z' ao TT&C` : 'nenhum valor ainda';
+  const C = 150, R = 118;
+  const P = (deg, r) => [C + r * Math.sin(deg * Math.PI / 180), C - r * Math.cos(deg * Math.PI / 180)];
+  let g = `<circle class="aro" cx="${C}" cy="${C}" r="${R + 14}"/>`;
+  for (let d = 0; d < 360; d += 15) {
+    const [x1, y1] = P(d, R + 12), [x2, y2] = P(d, d % 90 ? R + 4 : R - 6);
+    g += `<line class="tick ${d % 90 ? '' : 'm'}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+  }
+  [['0° FRONTAL', 0], ['90° DIREITO', 90], ['180° TRASEIRO', 180], ['270° ESQUERDO', 270]].forEach(([t, d]) => {
+    const [x, y] = P(d, R - 22);
+    g += `<text class="lbl" x="${x}" y="${y + 4}" text-anchor="middle">${t}</text>`;
+  });
+  for (const h of a.azHist.slice(-30)) { const [x, y] = P(h.az, R - 4); g += `<circle class="rastro" cx="${x}" cy="${y}" r="5"/>`; }
+  if (a.az != null) {
+    const [x, y] = P(a.az, R - 8);
+    g += `<line class="agulha" x1="${C}" y1="${C}" x2="${x}" y2="${y}"/><circle class="ponta" cx="${x}" cy="${y}" r="7"/><circle cx="${C}" cy="${C}" r="6" fill="#3987e5"/>`;
+  }
+  $('bussola').innerHTML = g;
+  $('az-lado').innerHTML = a.az != null
+    ? `<div class="v">${a.az.toFixed(1)}<small>°</small></div><div class="d">recebido ${ago(a.azAt, n)}</div><div class="d">0° = luz de frente para a face FRONTAL; os pontos claros são os últimos 30 valores.</div>`
+    : `<div class="v">—</div><div class="d">${a.busca ? 'busca ativa: o ADCS só manda com luz suficiente nos LDRs' : 'o OBC manda 3 quando o TT&C liga o bit Pointing (0x08)'}</div>`;
+  const fact = (k, v, on) => `<div class="fact"><div class="k">${k}</div><div class="v ${on ? 'on' : ''}">${v}</div></div>`;
+  $('adcs-est').innerHTML = fact('Detumbling (pedido pelo OBC)', a.detumbling ? 'ligado (1)' : 'desligado (2)', a.detumbling)
+    + fact('Busca de azimute', a.busca ? 'ativa (3)' : 'parada (4)', a.busca)
+    + fact('Último comando', a.ultimoCmd ? `${a.ultimoCmd.c} · ${ago(a.ultimoCmd.at, n)}` : '—')
+    + fact('Comandos enviados', a.cmds)
+    + fact('Estado do ADCS (SDBF!)', a.est ? `det ${a.est.det ? 1 : 0} · busca ${a.est.busca ? 1 : 0} · falha ${a.est.falha} · ${ago(a.estAt, n)}` : 'nenhum ainda', a.est && n - a.estAt < 6000 && !a.est.falha)
+    + fact('Falhas seguidas / reinícios', `${a.falhas ?? 0}/5 · ${a.reinicios ?? 0} reinícios`, !(a.falhas) && !(a.reinicios));
+  const u = a.usb;
+  if (u.com) {
+    $('adcs-est').innerHTML += fact(`USB do Nano (${u.com})`, u.connected ? (u.lastAt && n - u.lastAt < 15000 ? 'conectado' : 'conectado, em silêncio') : 'desconectado', u.connected)
+      + fact('Comandos que o Nano confirmou', `${u.cmdsRecebidos}${u.ultimoCmd ? ` · último ${u.ultimoCmd.c} ${ago(u.ultimoCmd.at, n)}` : ''}`, u.cmdsRecebidos > 0)
+      + fact('Detumbling no Nano', u.det == null ? '—' : u.det ? 'ATIVO' : 'parado', u.det)
+      + fact('Rotação do corpo', u.omega == null ? '—' : `${u.omega.toFixed(1)} rpm`, u.omega != null && Math.abs(u.omega) < 5);
+    if (u.erro) $('adcs-est').innerHTML += `<div class="fact" style="grid-column:1/-1"><div class="k">Erro informado pelo Nano</div><div class="v" style="color:#ff9b9b;font-size:14px">${esc(u.erro)}</div></div>`;
+  }
+  renderOmega();
+  const h = [...a.azHist].reverse().slice(0, 12);
+  $('az-hist').innerHTML = h.length ? h.map((x) => `<li class="ev tm"><span class="ts">${hhmmss(x.t)}</span><span class="mk"></span><span class="tx">${x.az.toFixed(1)}°</span></li>`).join('') : '<li class="empty">Nada ainda.</li>';
+}
+
+function renderOmega() {
+  const u = S.adcs.usb, h = u.omegaHist;
+  const W = 600, H = 200, L = 40, R = 10, T = 10, B = 24;
+  $('omega-meta').textContent = u.faixaS != null ? `(abaixo de 5 rpm em ${u.faixaS.toFixed(2)} s; meta da prova < 10 s)` : '(USB do Nano, 10 Hz durante o detumbling)';
+  if (h.length < 2) { $('omega-graf').innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" fill="#8c8b83" font-size="13">${u.com ? 'aparece quando o detumbling estiver ativo' : 'rode o bridge com --adcs COMxx para ver o giroscópio'}</text>`; return; }
+  const ws = h.map((p) => p.w), y1 = Math.max(10, ...ws.map(Math.abs)) * 1.1, y0 = Math.min(0, ...ws) * 1.1;
+  const t0 = h[0].t, t1 = h.at(-1).t;
+  const X = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R), Y = (v) => T + (1 - (v - y0) / (y1 - y0)) * (H - T - B);
+  let g = '';
+  for (const v of [0, 5, Math.round(y1 / 2), Math.round(y1 * 0.9)]) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text class="gl" x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`;
+  g += `<line class="corte" x1="${L}" x2="${W - R}" y1="${Y(5)}" y2="${Y(5)}"/><text class="gl" x="${W - R}" y="${Y(5) - 4}" text-anchor="end">5 rpm</text>`;
+  g += `<path class="s" stroke="#3987e5" d="${h.map((p, i) => `${i ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(p.w).toFixed(1)}`).join('')}"/>`;
+  g += `<text class="gl" x="${L}" y="${H - 6}">${hhmmss(t0)}</text><text class="gl" x="${W - R}" y="${H - 6}" text-anchor="end">${hhmmss(t1)} · rpm</text>`;
+  $('omega-graf').innerHTML = g;
+}
+
 // ----------------------------------------------------------------- térmico
 const CORES = ['#3987e5', '#d95926', '#199e70', '#c98500'];   // paleta categórica (dark), ordem fixa
 const SIT = [[1, 'sem sonda'], [2, 'corte por temperatura alta'], [4, 'uma sonda falhou'], [8, 'sem calibração'],
@@ -448,21 +523,46 @@ function renderTGraf() {
 
 // ------------------------------------------------------ aviso sonoro (avião)
 let audio = null;
-let somLigado = false;
+// Aviso sonoro LIGADO por padrão (a escolha fica salva no navegador).
+let somLigado = localStorage.getItem('somAviao') !== 'off';
 let conhecidos = null;          // ICAOs já vistos quando o painel abriu (não avisa o passado)
 let validosAntes = null, blocoAntes = null;
 const tituloBase = document.title;
-function tocar() {
+// Som do aviso: se existir web/sons/aviao.mp3 (ou .ogg/.wav), toca esse arquivo (coloque ali o áudio que
+// quiser, de uso seu); senão, toca uma fanfarra curta de vitória composta aqui (original).
+const SONS = ['/sons/aviao.mp3', '/sons/aviao.ogg', '/sons/aviao.wav'];
+let somArquivo = null;
+(async () => {
+  for (const u of SONS) {
+    try { const r = await fetch(u, { method: 'HEAD' }); if (r.ok) { somArquivo = u; break; } } catch {}
+  }
+})();
+let tocando = null;
+function fanfarra() {
   if (!audio) return;
-  const t = audio.currentTime;
-  [0, 0.28, 0.56].forEach((d, i) => {
+  const t0 = audio.currentTime + 0.02;
+  // [frequência (Hz), início (s), duração (s)]: arpejo ascendente em Dó maior e acorde final sustentado
+  const notas = [[523.25, 0, 0.16], [659.25, 0.16, 0.16], [783.99, 0.32, 0.16], [1046.5, 0.48, 0.42],
+    [783.99, 0.95, 0.14], [1046.5, 1.1, 0.8], [659.25, 1.1, 0.8], [783.99, 1.1, 0.8]];
+  for (const [f, ini, dur] of notas) {
     const o = audio.createOscillator(), g = audio.createGain();
-    o.type = 'sine'; o.frequency.value = i % 2 ? 1320 : 880;
-    g.gain.setValueAtTime(0.0001, t + d);
-    g.gain.exponentialRampToValueAtTime(0.4, t + d + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.24);
-    o.connect(g).connect(audio.destination); o.start(t + d); o.stop(t + d + 0.26);
-  });
+    o.type = 'triangle'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t0 + ini);
+    g.gain.exponentialRampToValueAtTime(0.25, t0 + ini + 0.03);
+    g.gain.setValueAtTime(0.25, t0 + ini + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + ini + dur);
+    o.connect(g).connect(audio.destination); o.start(t0 + ini); o.stop(t0 + ini + dur + 0.02);
+  }
+}
+function tocar() {
+  if (!audio || audio.state !== 'running') liberarAudio();
+  if (somArquivo) {
+    if (tocando) { tocando.pause(); }
+    tocando = new Audio(somArquivo);
+    tocando.play().catch(() => fanfarra());
+    return;
+  }
+  fanfarra();
 }
 function avisar(titulo, detalhe) {
   if (somLigado) tocar();
@@ -474,12 +574,28 @@ function avisar(titulo, detalhe) {
   if (window.Notification && Notification.permission === 'granted' && document.hidden) new Notification(`✈ ${titulo}`, { body: detalhe });
 }
 window.addEventListener('focus', () => { document.title = tituloBase; });
+// O navegador só libera áudio depois de um gesto do usuário, a menos que a janela tenha sido aberta com
+// --autoplay-policy=no-user-gesture-required. Tenta na carga e destrava no 1º clique/tecla em qualquer lugar.
+function botaoSom() {
+  const bloqueado = somLigado && (!audio || audio.state !== 'running');
+  $('som-btn').classList.toggle('on', somLigado && !bloqueado);
+  $('som-btn').textContent = !somLigado ? '🔕 Aviso sonoro desligado' : bloqueado ? '🔇 Clique na página para liberar o som' : '🔔 Aviso sonoro ligado';
+}
+async function liberarAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state !== 'running') await audio.resume();
+  } catch {}
+  botaoSom();
+}
+liberarAudio();
+['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, liberarAudio, { once: false, passive: true }));
+setInterval(botaoSom, 2000);
 $('som-btn').onclick = async () => {
-  if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
-  await audio.resume();
+  await liberarAudio();
   somLigado = !somLigado;
-  $('som-btn').classList.toggle('on', somLigado);
-  $('som-btn').textContent = somLigado ? '🔔 Aviso sonoro ligado' : '🔕 Ativar aviso sonoro';
+  localStorage.setItem('somAviao', somLigado ? 'on' : 'off');
+  botaoSom();
   if (somLigado) { tocar(); if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); }
 };
 $('som-teste').onclick = async () => {
@@ -558,7 +674,7 @@ function addRaw(e) {
 // ---------------------------------------------------------------------- SSE
 function render() {
   renderTop(); renderSummary(); renderStateMachine(); renderFeed(); renderTasks();
-  renderTtc(); renderPayload(); renderTermico(); renderTelemetry(); renderPins();
+  renderTtc(); renderPayload(); renderAdcs(); renderTermico(); renderTelemetry(); renderPins();
   checarAvioes();
   $('foot').textContent = `Painel aberto às ${new Date(S.startedAt).toLocaleTimeString('pt-BR')} · logs da sessão em ${S.logDir}`;
 }

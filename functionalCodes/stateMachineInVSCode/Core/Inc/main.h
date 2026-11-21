@@ -64,6 +64,15 @@ void Error_Handler(void);
  * flight builds, and when a PA3 -> PA10 jumper is in place (every byte would
  * be received twice). */
 #define TC_ON_USART2 0
+/* ADCS (Arduino Nano, 9600 8N1). PCB do OBC: USART2 (PA2 TX -> D12 do Nano, PA3 RX <- D11),
+ * como no Notion; nesse caso o debug pela USART2 sai do ar. Bancada com o Nucleo, onde a
+ * USART2 é o ST-Link: compile com -DBANCADA_ADCS_UART4=1 e o ADCS vai na UART4
+ * (A0 = PA0 TX -> D12, A1 = PA1 RX <- D11). */
+#if defined(BANCADA_ADCS_UART4) && BANCADA_ADCS_UART4
+#define ADCS_NA_USART2 0
+#else
+#define ADCS_NA_USART2 1
+#endif
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

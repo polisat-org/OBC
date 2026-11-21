@@ -25,11 +25,13 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <string.h>
 #include "customTypes.h"
 #include "BME280.h"
 #include "DS3231.h"
 #include "hermes_adsb.h"
 #include "payload_downlink.h"
+#include "adcs_link.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +47,7 @@
 #define TASK_STOP_FLAG       (1U << 1)
 
 #define TC_ON_USART2         0
-#define ENABLE_DEBUG_UART2   1
+#define ENABLE_DEBUG_UART2   (!ADCS_NA_USART2)   /* na PCB a USART2 é do ADCS */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -99,7 +101,7 @@ const osThreadAttr_t deployTask_attributes = {
 osThreadId_t detumblingTaskHandle;
 const osThreadAttr_t detumblingTask_attributes = {
   .name = "detumblingTask",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for missionTask */
@@ -130,6 +132,23 @@ const osMutexAttr_t uartMutex_attributes = {
   .name = "uartMutex"
 };
 /* USER CODE BEGIN PV */
+#if !ADCS_NA_USART2
+UART_HandleTypeDef huart4;          /* bancada: ADCS na UART4 (A0/A1 do Nucleo) */
+#define ADCS_HUART huart4
+#else
+#define ADCS_HUART huart2           /* PCB: ADCS na USART2 */
+#endif
+/* Flags da task Detumbling (gerente do ADCS); bits 0 e 1 = TASK_START/STOP_FLAG do detumbling */
+#define ADCS_AZ_INICIA_FLAG  (1U << 2)
+#define ADCS_AZ_PARA_FLAG    (1U << 3)
+#define ADCS_AZ_RX_FLAG      (1U << 4)
+#define ADCS_EST_RX_FLAG     (1U << 5)
+static uint8_t adcsRxByte;
+static AdcsAzParser adcsParser;
+static volatile char adcsAzIsr[ADCS_AZ_LEN + 1];   /* último azimute completo (ISR -> task) */
+static volatile AdcsEstado adcsEstIsr;              /* último estado "SDBF!" (ISR -> task) */
+static char g_azimute[ADCS_AZ_LEN + 1] = "";       /* último azimute, para a telemetria */
+static volatile uint32_t g_azimuteTick = 0U;
 static uint8_t usart1RxBuffer;
 static volatile uint32_t usart1LastError;
 static volatile uint32_t usart1ErrorCount;
@@ -159,6 +178,7 @@ void vHkTickCallback(void *argument);
 
 /* USER CODE BEGIN PFP */
 static void debugPrintf(const char *format, ...);
+static void adcsUartInit(void);
 static void handleTelecommand(uint8_t tc, SatMode_t *mode,
 		bool *deployInProgress, volatile bool *deployCompleted,
 		bool *missionActive);
@@ -167,7 +187,9 @@ static void handleTelecommand(uint8_t tc, SatMode_t *mode,
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 int __io_putchar(int ch) {
+#if ENABLE_DEBUG_UART2
 	HAL_UART_Transmit(&huart2, (uint8_t*) &ch, 1, 10);
+#endif
 	return ch;
 }
 
@@ -228,11 +250,13 @@ static void handleTelecommand(uint8_t tc, SatMode_t *mode,
 	if (((tc & TC_BIT_POINTING) != 0U) && ((tc & TC_BIT_DETUMBLING) == 0U)) {
 		if (*mode != SAT_MODE_POINTING) {
 			*mode = SAT_MODE_POINTING;
+			osThreadFlagsSet(detumblingTaskHandle, ADCS_AZ_INICIA_FLAG);   /* ADCS: comando 3 */
 			debugPrintf("[%08lu] rx accepted: pointing ON\r\n",
 					osKernelGetTickCount());
 		}
 	} else if (*mode == SAT_MODE_POINTING) {
 		*mode = SAT_MODE_IDLE;
+		osThreadFlagsSet(detumblingTaskHandle, ADCS_AZ_PARA_FLAG);        /* ADCS: comando 4 */
 		debugPrintf("[%08lu] rx accepted: pointing STOP\r\n",
 				osKernelGetTickCount());
 	}
@@ -296,6 +320,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   /* Payload HERMES: recebe 20 x 204 = 4080 B a cada 5 s por DMA na USART3 (PB11). */
   HermesAdsb_Init(&huart3, NULL);
+  adcsUartInit();
 
   /* USER CODE END 2 */
 
@@ -535,6 +560,14 @@ static void MX_USART2_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART2_Init 2 */
+#if ADCS_NA_USART2
+  /* PCB: a USART2 é do ADCS (SoftwareSerial do Nano, 9600). O CubeMX gera 115200 (debug do Nucleo). */
+  huart2.Init.BaudRate = ADCS_BAUD;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+#endif
 
   /* USER CODE END USART2_Init 2 */
 
@@ -637,6 +670,25 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     {
         HermesAdsb_RxCpltCallback(huart);
     }
+    else if (huart->Instance == ADCS_HUART.Instance)
+    {
+        char az[ADCS_AZ_LEN + 1];
+        AdcsEstado est;
+        AdcsMsgTipo tipo = adcs_feed(&adcsParser, adcsRxByte, az, &est);
+        if (tipo == ADCS_MSG_AZIMUTE)
+        {
+            for (uint32_t k = 0U; k <= ADCS_AZ_LEN; k++) { adcsAzIsr[k] = az[k]; }
+            (void)osThreadFlagsSet(detumblingTaskHandle, ADCS_AZ_RX_FLAG);
+        }
+        else if (tipo == ADCS_MSG_ESTADO)
+        {
+            adcsEstIsr.detumbling = est.detumbling;
+            adcsEstIsr.busca = est.busca;
+            adcsEstIsr.falha = est.falha;
+            (void)osThreadFlagsSet(detumblingTaskHandle, ADCS_EST_RX_FLAG);
+        }
+        (void)HAL_UART_Receive_IT(&ADCS_HUART, &adcsRxByte, 1U);
+    }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
@@ -673,6 +725,14 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     else if (huart->Instance == HERMES_ADSB_UART_INSTANCE)
     {
         HermesAdsb_ErrorCallback(huart);
+    }
+    else if (huart->Instance == ADCS_HUART.Instance)
+    {
+        /* overrun/ruído: o HAL aborta a recepção; rearma (o parser se realinha sozinho) */
+        if (huart->RxState == HAL_UART_STATE_READY)
+        {
+            (void)HAL_UART_Receive_IT(&ADCS_HUART, &adcsRxByte, 1U);
+        }
     }
 }
 
@@ -711,6 +771,90 @@ static void payloadEnviaDownlink(const uint8_t *frame, size_t len)
 	HAL_UART_Transmit(&huart2, (uint8_t *)frame, (uint16_t)len, 200);
 #endif
 	osMutexRelease(uartMutexHandle);
+}
+
+/* ------------------------------------------------------------------- ADCS ---
+ * Comandos de 1 byte (1/2 detumbling, 3/4 azimute). O SoftwareSerial do Nano é
+ * half-duplex e pode perder um byte enquanto transmite o azimute (~5 ms/s): cada
+ * comando vai 2 vezes, 20 ms depois. Repetir é inofensivo (start/stop idempotentes
+ * no Nano). NÃO se reenvia periodicamente: se o ADCS desligar o motor por proteção
+ * (sobrevelocidade), o OBC não deve religar sozinho. */
+static void adcsUartInit(void)
+{
+#if !ADCS_NA_USART2
+	RCC_PeriphCLKInitTypeDef clk = {0};
+	GPIO_InitTypeDef gpio = {0};
+	clk.PeriphClockSelection = RCC_PERIPHCLK_UART4;
+	clk.Uart4ClockSelection = RCC_UART4CLKSOURCE_PCLK1;
+	if (HAL_RCCEx_PeriphCLKConfig(&clk) != HAL_OK) { Error_Handler(); }
+	__HAL_RCC_UART4_CLK_ENABLE();
+	__HAL_RCC_GPIOA_CLK_ENABLE();
+	gpio.Pin = GPIO_PIN_0 | GPIO_PIN_1;            /* PA0 = UART4_TX (A0), PA1 = UART4_RX (A1) */
+	gpio.Mode = GPIO_MODE_AF_PP;
+	gpio.Pull = GPIO_PULLUP;
+	gpio.Speed = GPIO_SPEED_FREQ_LOW;
+	gpio.Alternate = GPIO_AF8_UART4;
+	HAL_GPIO_Init(GPIOA, &gpio);
+	huart4.Instance = UART4;
+	huart4.Init.BaudRate = ADCS_BAUD;
+	huart4.Init.WordLength = UART_WORDLENGTH_8B;
+	huart4.Init.StopBits = UART_STOPBITS_1;
+	huart4.Init.Parity = UART_PARITY_NONE;
+	huart4.Init.Mode = UART_MODE_TX_RX;
+	huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart4.Init.OverSampling = UART_OVERSAMPLING_16;
+	huart4.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+	huart4.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+	if (HAL_UART_Init(&huart4) != HAL_OK) { Error_Handler(); }
+	HAL_NVIC_SetPriority(UART4_IRQn, 5, 0);
+	HAL_NVIC_EnableIRQ(UART4_IRQn);
+#else
+	HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
+	HAL_NVIC_EnableIRQ(USART2_IRQn);
+#endif
+	adcs_az_init(&adcsParser);
+	(void)HAL_UART_Receive_IT(&ADCS_HUART, &adcsRxByte, 1U);
+}
+
+/* Reset por hardware do Nano (pino RST, ativo em baixo, pull-up de 10 kΩ no próprio Nano).
+ * Bancada: D7 = PA8, saída open-drain (o PA8 tolera os 5 V do pull-up). Na PCB do OBC ainda não
+ * há essa linha no conector: só o reset por comando (5). */
+#if defined(BANCADA_ADCS_RESET) && BANCADA_ADCS_RESET
+#define ADCS_RST_PORT GPIOA
+#define ADCS_RST_PIN  GPIO_PIN_8
+#endif
+
+static void adcsResetInit(void)
+{
+#ifdef ADCS_RST_PIN
+	GPIO_InitTypeDef g = {0};
+	__HAL_RCC_GPIOA_CLK_ENABLE();
+	HAL_GPIO_WritePin(ADCS_RST_PORT, ADCS_RST_PIN, GPIO_PIN_SET);   /* solto */
+	g.Pin = ADCS_RST_PIN;
+	g.Mode = GPIO_MODE_OUTPUT_OD;
+	g.Pull = GPIO_NOPULL;
+	g.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(ADCS_RST_PORT, &g);
+#endif
+}
+
+static int adcsResetHardware(void)
+{
+#ifdef ADCS_RST_PIN
+	HAL_GPIO_WritePin(ADCS_RST_PORT, ADCS_RST_PIN, GPIO_PIN_RESET);
+	osDelay(pdMS_TO_TICKS(50U));
+	HAL_GPIO_WritePin(ADCS_RST_PORT, ADCS_RST_PIN, GPIO_PIN_SET);
+	return 1;
+#else
+	return 0;
+#endif
+}
+
+static void adcsComando(uint8_t cmd)
+{
+	(void)HAL_UART_Transmit(&ADCS_HUART, &cmd, 1U, 20);
+	osDelay(pdMS_TO_TICKS(20U));
+	(void)HAL_UART_Transmit(&ADCS_HUART, &cmd, 1U, 20);
 }
 /* USER CODE END 4 */
 
@@ -838,6 +982,8 @@ void StartHousekeepTask(void *argument)
 	  telemetryPacket.pressao = BMEBat.READ.PSSR;
 	  Get_Time(&telemetryPacket.segundo, &telemetryPacket.minuto, &telemetryPacket.hora, &telemetryPacket.dia, NULL, &telemetryPacket.mes, &telemetryPacket.ano);
 	  telemetryPacket.deploy_antena = antennaDeployed ? 1U : 0U;
+	  /* último azimute recebido do ADCS ("270.5" + '\0'); vazio se nunca chegou */
+	  memcpy(telemetryPacket.angulo_apontamento, g_azimute, sizeof(telemetryPacket.angulo_apontamento));
 
 	  Event_t evt = {
 		  .type = EVT_HK_DONE,
@@ -985,16 +1131,170 @@ void StartDeployTask(void *argument)
 void StartDetumblingTask(void *argument)
 {
   /* USER CODE BEGIN StartDetumblingTask */
-  for(;;)
-  {
-	  osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, osWaitForever);
-	  debugPrintf("[%08lu] detumbling task ran\r\n", osKernelGetTickCount());
-	  Event_t evt = {
-		  .type = EVT_DETUMBLING_DONE,
-		  .timestamp = osKernelGetTickCount()
-	  };
-	  osMessageQueuePut(eventQueueHandle, &evt, 0U, osWaitForever);
-  }
+	/* Gerente do ADCS. O detumbling só termina por comando (o ADCS não avisa o fim): o modo
+	 * fica em DETUMBLING até o TT&C tirar o bit. O azimute chega 1x/s durante a busca. */
+	/* Supervisão: o ADCS responde "SDBF!" depois de cada comando e a cada 2 s. Cada vez que o estado
+	 * não chega a tempo, ou não bate com o pedido sem uma falha declarada, o OBC reenvia o comando e
+	 * conta 1 falha. Com ADCS_FALHAS_MAX seguidas, reinicia o ADCS (comando 5 + pulso no RST, se
+	 * houver), espera ele subir e reenvia o pedido. Se o PRÓPRIO ADCS desligou o motor por proteção
+	 * (falha 1-3), o OBC NÃO religa: só reporta; o solo decide (tirar e pôr o bit Detumbling). */
+#define ADCS_FALHAS_MAX        5U
+#define ADCS_ESTADO_TIMEOUT_MS 5000U    /* heartbeat de 2 s + folga */
+#define ADCS_CONFIRMA_MS       1500U    /* prazo para o estado depois de um comando */
+#define ADCS_BOOT_MS           5000U    /* bootloader + calibração do giroscópio */
+#define ADCS_REINICIO_MIN_MS   60000U   /* no máximo 1 reinício por minuto */
+	static uint8_t quadroZ[1U + ADCS_AZ_LEN];
+	bool querDet = false, querBusca = false, bloqueadoPorFalha = false;
+	AdcsEstado est = {0, 0, 0};
+	bool temEstado = false;
+	uint32_t ultimoEstado = osKernelGetTickCount(), prazoConfirma = 0U, ultimaFalha = 0U;
+	uint32_t ultimoReinicio = 0U, reinicios = 0U, esperaBoot = 0U;
+	uint8_t falhas = 0U, falhaAnunciada = 0U;
+
+	adcsResetInit();
+	/* OBC acabou de ligar: põe o ADCS num estado conhecido, igual ao do OBC (tudo parado). */
+	osDelay(pdMS_TO_TICKS(200U));
+	adcsComando(ADCS_CMD_DETUMBLING_PARA);
+	adcsComando(ADCS_CMD_AZIMUTE_PARA);
+	prazoConfirma = osKernelGetTickCount() + ADCS_CONFIRMA_MS;
+	debugPrintf("[%08lu] adcs boot do OBC: tx 2 e 4 (sincroniza)\r\n", osKernelGetTickCount());
+
+	for (;;)
+	{
+		uint32_t f = osThreadFlagsWait(TASK_START_FLAG | TASK_STOP_FLAG | ADCS_AZ_INICIA_FLAG
+				| ADCS_AZ_PARA_FLAG | ADCS_AZ_RX_FLAG | ADCS_EST_RX_FLAG, osFlagsWaitAny, pdMS_TO_TICKS(500U));
+		uint32_t agora = osKernelGetTickCount();
+		if ((f & osFlagsError) != 0U)
+		{
+			f = 0U;          /* timeout: só a supervisão abaixo */
+		}
+		if ((f & TASK_STOP_FLAG) != 0U)
+		{
+			querDet = false;
+			bloqueadoPorFalha = false;
+			adcsComando(ADCS_CMD_DETUMBLING_PARA);
+			prazoConfirma = agora + ADCS_CONFIRMA_MS;
+			debugPrintf("[%08lu] adcs tx 2 (encerra detumbling)\r\n", osKernelGetTickCount());
+		}
+		if ((f & TASK_START_FLAG) != 0U)
+		{
+			querDet = true;
+			bloqueadoPorFalha = false;
+			adcsComando(ADCS_CMD_DETUMBLING_INICIA);
+			prazoConfirma = agora + ADCS_CONFIRMA_MS;
+			debugPrintf("[%08lu] adcs tx 1 (inicia detumbling)\r\n", osKernelGetTickCount());
+		}
+		if ((f & ADCS_AZ_PARA_FLAG) != 0U)
+		{
+			querBusca = false;
+			adcsComando(ADCS_CMD_AZIMUTE_PARA);
+			prazoConfirma = agora + ADCS_CONFIRMA_MS;
+			debugPrintf("[%08lu] adcs tx 4 (encerra azimute)\r\n", osKernelGetTickCount());
+		}
+		if ((f & ADCS_AZ_INICIA_FLAG) != 0U)
+		{
+			querBusca = true;
+			adcsComando(ADCS_CMD_AZIMUTE_INICIA);
+			prazoConfirma = agora + ADCS_CONFIRMA_MS;
+			debugPrintf("[%08lu] adcs tx 3 (inicia azimute)\r\n", osKernelGetTickCount());
+		}
+
+		if ((f & ADCS_EST_RX_FLAG) != 0U)
+		{
+			taskENTER_CRITICAL();
+			est.detumbling = adcsEstIsr.detumbling;
+			est.busca = adcsEstIsr.busca;
+			est.falha = adcsEstIsr.falha;
+			taskEXIT_CRITICAL();
+			temEstado = true;
+			ultimoEstado = agora;
+			debugPrintf("[%08lu] adcs est det=%u busca=%u falha=%u\r\n", agora,
+					(unsigned)est.detumbling, (unsigned)est.busca, (unsigned)est.falha);
+			if (est.falha != 0U && querDet && !est.detumbling)
+			{
+				bloqueadoPorFalha = true;       /* proteção do próprio ADCS: não religar */
+				if (falhaAnunciada != est.falha)
+				{
+					falhaAnunciada = est.falha;
+					debugPrintf("[%08lu] adcs falha %u: o ADCS desligou o motor; o OBC nao religa\r\n",
+							agora, (unsigned)est.falha);
+				}
+			}
+			bool detOk = (est.detumbling == (querDet && !bloqueadoPorFalha)) || bloqueadoPorFalha;
+			bool buscaOk = (est.busca == querBusca);
+			if (detOk && buscaOk)
+			{
+				if (falhas != 0U)
+				{
+					debugPrintf("[%08lu] adcs ok de novo (zera falhas)\r\n", agora);
+				}
+				falhas = 0U;
+				prazoConfirma = 0U;
+			}
+			else if (esperaBoot == 0U && (int32_t)(agora - prazoConfirma) >= 0)
+			{
+				/* o comando não pegou (ou o ADCS reiniciou sozinho): reenvia e conta */
+				falhas++;
+				ultimaFalha = agora;
+				debugPrintf("[%08lu] adcs divergente: pedido det=%u busca=%u, adcs det=%u busca=%u (falha %u/%u)\r\n",
+						agora, (unsigned)(querDet && !bloqueadoPorFalha), (unsigned)querBusca,
+						(unsigned)est.detumbling, (unsigned)est.busca, (unsigned)falhas, (unsigned)ADCS_FALHAS_MAX);
+				if (!detOk) { adcsComando((querDet && !bloqueadoPorFalha) ? ADCS_CMD_DETUMBLING_INICIA : ADCS_CMD_DETUMBLING_PARA); }
+				if (!buscaOk) { adcsComando(querBusca ? ADCS_CMD_AZIMUTE_INICIA : ADCS_CMD_AZIMUTE_PARA); }
+				prazoConfirma = osKernelGetTickCount() + ADCS_CONFIRMA_MS;
+			}
+		}
+
+		/* sem resposta: conta 1 falha a cada janela de ADCS_ESTADO_TIMEOUT_MS */
+		if (esperaBoot == 0U && (agora - ultimoEstado) >= ADCS_ESTADO_TIMEOUT_MS
+				&& (agora - ultimaFalha) >= ADCS_ESTADO_TIMEOUT_MS)
+		{
+			falhas++;
+			ultimaFalha = agora;
+			debugPrintf("[%08lu] adcs sem resposta ha %lu s (falha %u/%u)\r\n", agora,
+					(unsigned long)((agora - ultimoEstado) / 1000U), (unsigned)falhas, (unsigned)ADCS_FALHAS_MAX);
+		}
+
+		/* 5 falhas seguidas: reinicia o ADCS e reenvia o pedido depois do boot dele */
+		if (falhas >= ADCS_FALHAS_MAX && esperaBoot == 0U
+				&& (ultimoReinicio == 0U || (agora - ultimoReinicio) >= ADCS_REINICIO_MIN_MS))
+		{
+			reinicios++;
+			adcsComando(ADCS_CMD_REINICIA);
+			int hw = adcsResetHardware();
+			ultimoReinicio = osKernelGetTickCount();
+			esperaBoot = ultimoReinicio + ADCS_BOOT_MS;
+			falhas = 0U;
+			bloqueadoPorFalha = false;
+			falhaAnunciada = 0U;
+			debugPrintf("[%08lu] adcs reinicia #%lu (%u falhas): cmd 5%s\r\n", ultimoReinicio,
+					(unsigned long)reinicios, (unsigned)ADCS_FALHAS_MAX, hw ? " + pulso no RST" : "");
+		}
+		if (esperaBoot != 0U && (int32_t)(agora - esperaBoot) >= 0)
+		{
+			esperaBoot = 0U;
+			ultimoEstado = agora;                 /* recomeça a contar o heartbeat */
+			if (querDet) { adcsComando(ADCS_CMD_DETUMBLING_INICIA); }
+			if (querBusca) { adcsComando(ADCS_CMD_AZIMUTE_INICIA); }
+			prazoConfirma = osKernelGetTickCount() + ADCS_CONFIRMA_MS;
+			debugPrintf("[%08lu] adcs pos-reinicio: reenvia det=%u busca=%u\r\n", agora, (unsigned)querDet, (unsigned)querBusca);
+		}
+		(void)temEstado;
+		if ((f & ADCS_AZ_RX_FLAG) != 0U)
+		{
+			char az[ADCS_AZ_LEN + 1];
+			taskENTER_CRITICAL();
+			for (uint32_t k = 0U; k <= ADCS_AZ_LEN; k++) { az[k] = adcsAzIsr[k]; }
+			taskEXIT_CRITICAL();
+			memcpy(g_azimute, az, sizeof(az));
+			g_azimuteTick = osKernelGetTickCount();
+			/* ao TT&C na hora, num quadro 'Z' + 5 caracteres (no máximo 1 por segundo) */
+			quadroZ[0] = (uint8_t)'Z';
+			memcpy(&quadroZ[1], az, ADCS_AZ_LEN);
+			payloadEnviaDownlink(quadroZ, sizeof(quadroZ));
+			debugPrintf("[%08lu] adcs az=%s\r\n", osKernelGetTickCount(), az);
+		}
+	}
   /* USER CODE END StartDetumblingTask */
 }
 

@@ -28,6 +28,8 @@ const STM_COM = opt('stm', 'COM18');
 const HTTP_PORT = Number(opt('http', 8780));
 const TCP_PORT = Number(opt("tcp", 8772));
 const AUTO_RELAY = !args.includes('--no-relay');
+const ADCS_COM = opt('adcs', null);          // ex.: --adcs COM10 (USB do Arduino Nano do ADCS, debug a 115200)
+const ADCS_TCP = 8774;
 const SENSORES = args.includes('--sensores'); // sem a flag: bancada sem BME280/DS3231 (sensores não instalados)
 const now = () => Date.now();
 
@@ -48,6 +50,10 @@ const S = {
   payload: { gpio: null, lastOnAt: null, lastOffAt: null, blocks: 0, lastBlock: null, lastBlockAt: null, descartadosTotal: 0,
     resyncs: 0, uartErros: 0, semDados: null, downlinks: 0, lastDownlinkAt: null, lastDownlink: null,
     planes: [], planesAt: null, framesP: 0, tracks: {}, tcs: null, tcsFrames: 0, tcsHist: [], tcsRuins: 0, continua: false, icaosVistos: {} },
+  adcs: { detumbling: false, busca: false, buscaDesde: null, cmds: 0, ultimoCmd: null, az: null, azAt: null, azN: 0, azHist: [], zFrames: 0,
+    est: null, estAt: null, estN: 0, falhas: 0, reinicios: 0, reinicioAt: null, falhaAdcs: 0,
+    usb: { com: ADCS_COM, connected: false, lines: 0, lastAt: null, cmdsRecebidos: 0, ultimoCmd: null, det: null, busca: null,
+      omega: null, omegaHist: [], faixaS: null, erro: null, enviados: 0, msg: null } },
   tcsReceived: 0,
   lastTcAt: null,
   script: { pos: 0, current: null, done: [], byIndex: {}, synced: false },
@@ -118,16 +124,17 @@ function expectFor(st, tc) {
   if ((tc & 0x02) && !st.antennaDeployed) return { expect: [/rx accepted: deploy/, /deploy task ran/, /deploy done/], forbid: [] };
   if (tc & 0x02) f.push(/rx accepted: deploy/);
   let mode = st.mode;
-  if (tc & 0x04) { if (mode !== 2) { e.push(/detumbling ON/, /detumbling task ran/, /detumbling done/); mode = 2; } }
-  else if (mode === 2) { e.push(/detumbling STOP/); mode = 0; }
-  if ((tc & 0x08) && !(tc & 0x04)) { if (mode !== 3) { e.push(/pointing ON/); mode = 3; } }
-  else if (mode === 3) { e.push(/pointing STOP/); mode = 0; }
+  if (tc & 0x04) { if (mode !== 2) { e.push(/detumbling ON/, /adcs tx 1/); mode = 2; } }
+  else if (mode === 2) { e.push(/detumbling STOP/, /adcs tx 2/); mode = 0; }
+  if ((tc & 0x08) && !(tc & 0x04)) { if (mode !== 3) { e.push(/pointing ON/, /adcs tx 3/); mode = 3; } }
+  else if (mode === 3) { e.push(/pointing STOP/, /adcs tx 4/); mode = 0; }
   if ((tc & 0x08) && (tc & 0x04)) f.push(/pointing ON/);
   if (tc & 0x01) { if (!st.missionActive) e.push(/mission ON/, /pld ligar/); }
   else if (st.missionActive) e.push(/mission OFF/, /pld desligar/);
   return { expect: e, forbid: f };
 }
 const HUMAN = [
+  [/adcs tx 1/, 'mandar 1 ao ADCS'], [/adcs tx 2/, 'mandar 2 ao ADCS'], [/adcs tx 3/, 'mandar 3 ao ADCS'], [/adcs tx 4/, 'mandar 4 ao ADCS'],
   [/detumbling ON/, 'ligar detumbling'], [/detumbling task ran/, 'rodar task Detumbling'], [/detumbling done/, 'concluir detumbling'],
   [/detumbling STOP/, 'parar detumbling'], [/pointing ON/, 'ligar pointing'], [/pointing STOP/, 'parar pointing'],
   [/mission ON/, 'ligar missão'], [/pld ligar/, 'mandar LIGAR ao payload'], [/mission OFF/, 'desligar missão'], [/pld desligar/, 'mandar DESLIGAR ao payload'],
@@ -258,6 +265,7 @@ let lineBuf = [];
 let frame = null;
 let pFrame = null;   // quadro 'P' espelhado: { count: null | n, bytes: [] }
 let hFrame = null;   // quadro 'H' espelhado: 32 B do trailer térmico
+let zFrame = null;   // quadro 'Z' espelhado: 5 caracteres do azimute
 let lastByteAt = 0;
 function onStmData(chunk) {
   lastByteAt = now();
@@ -265,6 +273,11 @@ function onStmData(chunk) {
     if (frame) {
       frame.push(b);
       if (frame.length === TELEMETRY_SIZE) { const f = Buffer.from(frame); frame = null; onTelemetry(f); }
+      continue;
+    }
+    if (zFrame) {
+      zFrame.push(b);
+      if (zFrame.length === 5) { S.adcs.zFrames++; raw(`Z + "${Buffer.from(zFrame).toString('latin1')}" (azimute ao TT&C)`, 'tm'); zFrame = null; }
       continue;
     }
     if (hFrame) {
@@ -281,6 +294,7 @@ function onStmData(chunk) {
     if (lineBuf.length === 0 && b === 0x54) { frame = []; continue; }
     if (lineBuf.length === 0 && b === 0x50) { pFrame = { count: null, bytes: [] }; continue; }
     if (lineBuf.length === 0 && b === 0x48) { hFrame = []; continue; }
+    if (lineBuf.length === 0 && b === 0x5A) { zFrame = []; continue; }
     if (b === 0x0a) { const l = Buffer.from(lineBuf).toString('latin1'); lineBuf = []; onStmLine(l); continue; }
     if (lineBuf.length < 512) lineBuf.push(b);
   }
@@ -366,6 +380,7 @@ function onStmLine(rawLine) {
     S.tasks = freshTasks();
     S.housekeepPeriods = [];
     Object.assign(S.payload, { gpio: null, lastOnAt: null, lastOffAt: null, semDados: null });
+    Object.assign(S.adcs, { detumbling: false, busca: false });
   }
   if (rule.kind === 'tc') {
     S.tcsReceived++; S.lastTcAt = now(); S.firmware.bancada = true; S.firmware.tcVisivel = true;
@@ -379,7 +394,7 @@ function onStmLine(rawLine) {
   if (rule.fn) rule.fn(o);
   if (rule.mode && mm[1] !== undefined) o.mode = Number(mm[1]);
   if (rule.kind === 'uart_error') o.uartErrors++;
-  if (rule.pl) rule.pl(S.payload, mm, now());
+  if (rule.pl) rule.pl(S.payload, mm, now(), S);
   if (rule.kind === 'tx') {
     if (tick !== null && o.lastHkTick !== null && tick > o.lastHkTick) S.housekeepPeriods = [...S.housekeepPeriods, (tick - o.lastHkTick) / 1000].slice(-20);
     if (tick !== null) o.lastHkTick = tick;
@@ -391,6 +406,39 @@ function onStmLine(rawLine) {
   }
   touchTask(rule.task);
   if (rule.say) event(rule.say(mm), rule.tone);
+  changed();
+}
+
+// ---------------------------------------------- USB do Nano (debug do ADCS)
+function onAdcsLine(rawLine) {
+  const line = rawLine.replace(/[^\x20-\x7e]/g, '').trim();
+  if (!line) return;
+  const u = S.adcs.usb;
+  const t = now();
+  u.lines++; u.lastAt = t;
+  let m;
+  if ((m = line.match(/^(\d+\.\d+),(-?\d+\.\d+),(-?\d+\.\d+)$/))) {           // t[s],omega[rpm],torque[mN.m]
+    u.omega = parseFloat(m[2]);
+    u.omegaHist = [...u.omegaHist, { t, w: u.omega, tau: parseFloat(m[3]) }].slice(-600);
+    changed();
+    return;
+  }
+  raw(`[ADCS] ${line}`, 'adcs');
+  if ((m = line.match(/# detumbling=(\d) busca_az=(\d) giro_ok=(\d) omega_rpm=(-?[\d.]+) na_faixa=(\d) t_faixa_s=([\d.]+) escon_ready=(\d) ultimo_az=(\S+)/))) {
+    Object.assign(u, { det: m[1] === '1', busca: m[2] === '1', giroOk: m[3] === '1', omega: parseFloat(m[4]), escon: m[7] === '1',
+      ultimoAzNano: m[8], estadoAt: t, vivo: true });
+    changed();
+    return;
+  }
+  if ((m = line.match(/# OBC: comando (\d+)/))) { u.cmdsRecebidos++; u.ultimoCmd = { c: +m[1], at: t }; event(`ADCS confirma pelo USB: recebeu o comando ${m[1]} do OBC`, 'good'); }
+  else if (/detumbling ATIVO/.test(line)) { u.det = true; u.erro = null; }
+  else if ((m = line.match(/detumbling PARADO(?: \((.*)\))?/))) { u.det = false; if (m[1] && !/comando 2/.test(m[1])) { u.erro = m[1]; event(`ADCS parou o detumbling: ${m[1]}`, 'bad'); } }
+  else if (/busca de azimute ATIVA/.test(line)) u.busca = true;
+  else if (/busca de azimute PARADA/.test(line)) u.busca = false;
+  else if ((m = line.match(/faixa de 5 rpm atingida em ([\d.]+) s/))) { u.faixaS = parseFloat(m[1]); event(`Detumbling: abaixo de 5 rpm em ${m[1]} s`, 'good'); }
+  else if ((m = line.match(/azimute enviado: (\d{3}\.\d)/))) u.enviados++;
+  else if (/ERRO/.test(line)) { u.erro = line; event(`ADCS: ${line}`, 'bad'); }
+  u.msg = line;
   changed();
 }
 
@@ -413,20 +461,39 @@ net.createServer((s) => {
   changed();
 }).listen(TCP_PORT, '127.0.0.1');
 
+if (ADCS_COM) {
+  let asock = null;
+  net.createServer((s) => {
+    if (asock) asock.destroy();
+    asock = s; S.adcs.usb.connected = true;
+    event(`Conectado ao USB do ADCS (${ADCS_COM})`, 'good');
+    // '?' só imprime o estado no USB do Nano (não aciona nada): confirma que ele está vivo
+    const pergunta = () => { if (asock === s) s.write('?'); };
+    setTimeout(pergunta, 1500);
+    const iv = setInterval(() => (asock === s ? pergunta() : clearInterval(iv)), 20000);
+    let buf = '';
+    s.setEncoding('latin1');
+    s.on('data', (d) => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i); buf = buf.slice(i + 1); onAdcsLine(l); } if (buf.length > 4096) buf = ''; });
+    const fim = () => { if (asock !== s) return; asock = null; S.adcs.usb.connected = false; event(`USB do ADCS (${ADCS_COM}) desconectado`, 'bad'); changed(); };
+    s.on('close', fim); s.on('error', fim);
+    changed();
+  }).listen(ADCS_TCP, '127.0.0.1');
+}
+
 const children = new Set();
 let shuttingDown = false;
-function startRelay() {
+function startRelay(com = STM_COM, port = TCP_PORT) {
   const ps1 = execFileSync('wslpath', ['-w', path.join(HERE, 'relay.ps1')]).toString().trim();
   const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1,
-    '-Port', STM_COM, '-Baud', '115200', '-TcpPort', String(TCP_PORT)], { stdio: ['ignore', 'pipe', 'pipe'] });
+    '-Port', com, '-Baud', '115200', '-TcpPort', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
   children.add(p);
   const out = (d) => d.toString().split(/\r?\n/).filter(Boolean).forEach((l) => {
     raw(l.trim(), 'relay');
-    if (/erro ao abrir/i.test(l)) { event(`Não consegui abrir ${STM_COM}: ${l.split(':').slice(1).join(':').trim()}`, 'bad'); changed(); }
+    if (/erro ao abrir/i.test(l)) { event(`Não consegui abrir ${com}: ${l.split(':').slice(1).join(':').trim()}`, 'bad'); changed(); }
   });
   p.stdout.on('data', out);
   p.stderr.on('data', out);
-  p.on('exit', () => { children.delete(p); if (!shuttingDown) setTimeout(startRelay, 3000); });
+  p.on('exit', () => { children.delete(p); if (!shuttingDown) setTimeout(() => startRelay(com, port), 3000); });
 }
 function shutdown() {
   shuttingDown = true;
@@ -439,7 +506,8 @@ process.on('SIGTERM', shutdown);
 
 // -------------------------------------------------------------------- HTTP
 const WEB = path.join(ROOT, 'web');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml',
+  '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav' };
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/events') {
@@ -457,7 +525,7 @@ http.createServer((req, res) => {
 }).listen(HTTP_PORT, () => {
   console.log(`[bancada] painel em http://localhost:${HTTP_PORT}`);
   console.log(`[bancada] lendo ${STM_COM}; logs em ${LOG_DIR}`);
-  if (AUTO_RELAY) startRelay();
+  if (AUTO_RELAY) { startRelay(); if (ADCS_COM) startRelay(ADCS_COM, ADCS_TCP); }
   else console.log(`[bancada] --no-relay: rode relay.ps1 -Port ${STM_COM} -TcpPort ${TCP_PORT}`);
 });
 

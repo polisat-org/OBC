@@ -203,12 +203,21 @@ void DMA1_Channel3_IRQHandler(void)
   HermesAdsb_DmaIrqHandler();
 }
 
-#if TC_ON_USART2
+#if TC_ON_USART2 || ADCS_NA_USART2
 /* Kept here instead of enabling the interrupt in CubeMX; if it is ever enabled
- * there, delete this handler (CubeMX will generate its own). */
+ * there, delete this handler (CubeMX will generate its own).
+ * Na PCB, a USART2 é do ADCS (azimute por interrupção). */
 void USART2_IRQHandler(void)
 {
   HAL_UART_IRQHandler(&huart2);
+}
+#endif
+#if !ADCS_NA_USART2
+/* Bancada: ADCS na UART4 (A0/A1 do Nucleo). */
+extern UART_HandleTypeDef huart4;
+void UART4_IRQHandler(void)
+{
+  HAL_UART_IRQHandler(&huart4);
 }
 #endif
 /* USER CODE END 1 */
