@@ -17,6 +17,11 @@
 #define HERMES_PLANE_SIZE 204u
 #define HERMES_BUFFER_SIZE 4080u
 #define HERMES_SEND_PERIOD_S 5u
+/* Trailer termico do TCS (controle termico das baterias) no fim de cada bloco:
+ * o Pi manda 4080 + 32 = 4112 B a cada 5 s, inclusive com a missao desligada
+ * (avioes zerados). Formato em payload_downlink.h. */
+#define HERMES_TCS_SIZE    32u
+#define HERMES_FRAME_SIZE  (HERMES_BUFFER_SIZE + HERMES_TCS_SIZE)
 
 #define HFLAG_MODE_A   (1u << 0)
 #define HFLAG_MODE_C   (1u << 1)

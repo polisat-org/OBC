@@ -59,4 +59,36 @@ size_t pld_compact(const Plane_t in[HERMES_NUM_PLANES],
 size_t pld_build_frame(const PlaneDown_t *planes, size_t count,
                        uint8_t *buf, size_t cap);
 
+/* ------------------------------------------------------------ trailer TCS ---
+ * 32 B no fim de cada bloco do Pi (hermes_simples/tcs_link.py), little-endian:
+ *   0 "TCS1" | 4 versao | 5 flags (bit0 dado valido) | 6 idade (u16, 0,1 s; 0xFFFF sem dado)
+ *   8 4 x int16 sondas 1..4 (0,01 C; -32768 invalida) | 16 duty A, duty B (%) | 18 situacao A, B
+ *   20 t_s do TCS (u32, 0,1 s) | 24 missao ativa | 25 avioes | 26 reservado | 30 CRC16-CCITT de 0..29
+ * Ao TT&C vai inteiro, num quadro 'H' = 'H' + 32 B. */
+#define PLD_TCS_TEMP_INVALIDA  ((int16_t)-32768)
+#define PLD_TCS_FRAME_SIZE     (1U + HERMES_TCS_SIZE)
+#define PLD_TCS_MARKER         ((uint8_t)'H')
+
+typedef struct {
+    uint8_t  valido;        /* TCS rodando e linha com ate 10 s */
+    uint16_t idade_ds;      /* 0xFFFF = sem dado */
+    int16_t  t_x100[4];     /* sondas 1..4 */
+    uint8_t  duty[2];       /* blocos A e B, % */
+    uint8_t  situacao[2];   /* codigos do TCS */
+    uint32_t t_ds;
+    uint8_t  missao;
+    uint8_t  avioes;
+} PldTcs_t;
+
+uint16_t pld_crc16(const uint8_t *data, size_t len);
+
+/* Confere magic, versao e CRC. Devolve 1 e preenche out se o trailer e bom. */
+int pld_tcs_decode(const uint8_t raw[HERMES_TCS_SIZE], PldTcs_t *out);
+
+/* Menor temperatura valida (x100), ou PLD_TCS_TEMP_INVALIDA se nenhuma. */
+int16_t pld_tcs_minima(const PldTcs_t *t);
+
+/* Quadro 'H' ao TT&C: marcador + o trailer cru. Devolve o tamanho ou 0. */
+size_t pld_build_tcs_frame(const uint8_t raw[HERMES_TCS_SIZE], uint8_t *buf, size_t cap);
+
 #endif /* PAYLOAD_DOWNLINK_H */

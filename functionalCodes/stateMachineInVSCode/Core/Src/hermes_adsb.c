@@ -12,7 +12,7 @@ static osThreadId_t g_notify;
 static DMA_HandleTypeDef g_hdma_rx;
 
 /* Dois bancos de 4080 bytes: o DMA enche um enquanto a task le o outro. */
-static uint8_t g_dma_buf[2][HERMES_BUFFER_SIZE] __attribute__((aligned(4)));
+static uint8_t g_dma_buf[2][HERMES_FRAME_SIZE] __attribute__((aligned(4)));   /* avioes + trailer TCS */
 static volatile int8_t g_fill;   /* 0/1: banco que o DMA esta enchendo */
 static volatile int8_t g_full;   /* -1 ou 0/1: banco pronto para a task */
 static HermesAdsbStats_t g_stats;
@@ -67,7 +67,7 @@ static HAL_StatusTypeDef arm_dma(void)
     if (g_uart == NULL) {
         return HAL_ERROR;
     }
-    return HAL_UART_Receive_DMA(g_uart, g_dma_buf[g_fill], HERMES_BUFFER_SIZE);
+    return HAL_UART_Receive_DMA(g_uart, g_dma_buf[g_fill], HERMES_FRAME_SIZE);
 }
 
 void HermesAdsb_Init(UART_HandleTypeDef *huart, osThreadId_t notifyTask)
@@ -129,7 +129,7 @@ void HermesAdsb_ErrorCallback(UART_HandleTypeDef *huart)
     }
 }
 
-int HermesAdsb_Take(Plane_t out[HERMES_NUM_PLANES])
+int HermesAdsb_Take(Plane_t out[HERMES_NUM_PLANES], uint8_t tcs[HERMES_TCS_SIZE])
 {
     int8_t full;
     uint32_t primask;
@@ -149,6 +149,9 @@ int HermesAdsb_Take(Plane_t out[HERMES_NUM_PLANES])
     g_full = -1;                /* libera o banco para o proximo DMA */
 
     memcpy(out, g_dma_buf[full], HERMES_BUFFER_SIZE);
+    if (tcs != NULL) {
+        memcpy(tcs, &g_dma_buf[full][HERMES_BUFFER_SIZE], HERMES_TCS_SIZE);
+    }
     __set_PRIMASK(primask);
     return 1;
 }

@@ -52,7 +52,10 @@ Só precisa do Node (sem `npm install`). A COM18 não pode estar aberta em outro
 | **PB11** (USART3_RX, CN10 pino 18) | ← | pino 8 (GPIO14, TX0) | 20 × 204 B = 4080 B a cada 5 s |
 | **GND** (CN10 pino 20) | — | pino 6 | referência |
 
-Nenhum GPIO é usado. O OBC recebe os blocos por DMA (`hermes_adsb.c`, da equipe do payload), descarta
+Nenhum GPIO é usado. O bloco do Pi tem 4080 B de aviões + 32 B de trailer térmico do TCS (4112 B a cada 5 s,
+inclusive com a missão desligada); o OBC repassa o trailer ao TT&C no quadro `'H'` e usa a sonda mais fria como
+`temperatura_bateria`. Na variante de bancada (`-DBANCADA_MISSAO_CONTINUA=1`) o payload fica ligado desde o boot e o
+DESLIGAR do TT&C é ignorado, para o SDR ouvir sem parar. O OBC recebe os blocos por DMA (`hermes_adsb.c`, da equipe do payload), descarta
 registros implausíveis (o bloco não tem CRC) e manda ao TT&C um quadro `'P'` a cada 5 s com 28 B por avião
 (`payload_downlink.c`). O Pi precisa do SDR no USB dele (porta "USB" do meio, com OTG) e de fonte própria.
 Diagrama completo: `web/montagem.html` (ou http://localhost:8780/montagem.html com o bridge rodando).
@@ -74,6 +77,10 @@ Os patches valem só para a cópia de build; o repositório não muda.
 - **Comandos do TT&C:** o roteiro do ESP32. Para cada comando recebido, o bridge simula o `handleTelecommand()`
   a partir do estado atual e confere se o debug mostrou exatamente o esperado.
 - **Payload:** caminho Pi → OBC → TT&C com o status de cada trecho, tabela e mapa dos aviões do último `'P'`.
+- **Térmico:** as 4 sondas do TCS, os duties decididos (modo observação), a situação de cada bloco e o gráfico dos
+  últimos 30 min, vindos do trailer térmico de 32 B que o Pi manda a cada 5 s.
+- **Aviso sonoro de avião:** botão "Ativar aviso sonoro" no topo (o navegador exige um clique). A cada ICAO novo,
+  toca um bipe, mostra um alerta e muda o título da aba; com a aba em segundo plano, manda notificação do sistema.
 - **Telemetria:** relógio, temperatura, pressão, umidade e antena, com tendência; todos os 38 campos do pacote.
 - **Ligações e pinos:** diagrama da bancada e tabela de pinos com status ao vivo.
 - **Histórico e log:** linha do tempo em português e a USART2 crua.

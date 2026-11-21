@@ -59,7 +59,7 @@ FILES=$(ls "$P"/Core/Src/*.c "$P"/Drivers/STM32L4xx_HAL_Driver/Src/*.c \
 
 # shellcheck disable=SC2086
 DEFS="-DUSE_HAL_DRIVER -DSTM32L476xx"
-if [[ "$VARIANT" == bancada ]]; then DEFS="$DEFS -DBANCADA_ESPELHO=1"; fi   # quadros 'P' também na USART2
+if [[ "$VARIANT" == bancada ]]; then DEFS="$DEFS -DBANCADA_ESPELHO=1 -DBANCADA_MISSAO_CONTINUA=1"; fi   # P/H na USART2; payload sempre ligado
 # shellcheck disable=SC2086
 arm-none-eabi-gcc $CPU $DEFS -std=gnu11 -Og -g3 \
   -ffunction-sections -fdata-sections $INC $FILES "$P/Core/Startup/startup_stm32l476rgtx.s" \

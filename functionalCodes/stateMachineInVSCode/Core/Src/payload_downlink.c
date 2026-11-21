@@ -101,3 +101,66 @@ size_t pld_build_frame(const PlaneDown_t *planes, size_t count,
     }
     return len;
 }
+
+/* ------------------------------------------------------------ trailer TCS --- */
+uint16_t pld_crc16(const uint8_t *data, size_t len)
+{
+    uint16_t crc = 0xFFFFU;
+    for (size_t i = 0; i < len; i++) {
+        crc ^= (uint16_t)((uint16_t)data[i] << 8);
+        for (int b = 0; b < 8; b++) {
+            crc = (crc & 0x8000U) ? (uint16_t)((crc << 1) ^ 0x1021U) : (uint16_t)(crc << 1);
+        }
+    }
+    return crc;
+}
+
+static uint16_t le16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
+static uint32_t le32(const uint8_t *p) { return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); }
+
+int pld_tcs_decode(const uint8_t raw[HERMES_TCS_SIZE], PldTcs_t *out)
+{
+    if (raw == NULL || out == NULL) {
+        return 0;
+    }
+    if (raw[0] != 'T' || raw[1] != 'C' || raw[2] != 'S' || raw[3] != '1' || raw[4] != 1U) {
+        return 0;
+    }
+    if (pld_crc16(raw, 30U) != le16(&raw[30])) {
+        return 0;
+    }
+    out->valido = (uint8_t)(raw[5] & 1U);
+    out->idade_ds = le16(&raw[6]);
+    for (int k = 0; k < 4; k++) {
+        out->t_x100[k] = (int16_t)le16(&raw[8 + 2 * k]);
+    }
+    out->duty[0] = raw[16];
+    out->duty[1] = raw[17];
+    out->situacao[0] = raw[18];
+    out->situacao[1] = raw[19];
+    out->t_ds = le32(&raw[20]);
+    out->missao = raw[24];
+    out->avioes = raw[25];
+    return 1;
+}
+
+int16_t pld_tcs_minima(const PldTcs_t *t)
+{
+    int16_t m = PLD_TCS_TEMP_INVALIDA;
+    for (int k = 0; k < 4; k++) {
+        if (t->t_x100[k] != PLD_TCS_TEMP_INVALIDA && (m == PLD_TCS_TEMP_INVALIDA || t->t_x100[k] < m)) {
+            m = t->t_x100[k];
+        }
+    }
+    return m;
+}
+
+size_t pld_build_tcs_frame(const uint8_t raw[HERMES_TCS_SIZE], uint8_t *buf, size_t cap)
+{
+    if (raw == NULL || buf == NULL || cap < PLD_TCS_FRAME_SIZE) {
+        return 0U;
+    }
+    buf[0] = PLD_TCS_MARKER;
+    memcpy(&buf[1], raw, HERMES_TCS_SIZE);
+    return PLD_TCS_FRAME_SIZE;
+}

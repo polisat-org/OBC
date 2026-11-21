@@ -68,11 +68,12 @@ void HermesAdsb_RxCpltCallback(UART_HandleTypeDef *huart);
 void HermesAdsb_ErrorCallback(UART_HandleTypeDef *huart);
 
 /*
- * Copia os 20 Plane_t do bloco pronto e libera o buffer para o DMA.
+ * Copia os 20 Plane_t e o trailer TCS (32 B; tcs pode ser NULL) do bloco pronto
+ * e libera o buffer para o DMA.
  * Devolve 1 se copiou, 0 se nao havia bloco pronto.
  * Chamado de dentro da task (nao da ISR).
  */
-int HermesAdsb_Take(Plane_t out[HERMES_NUM_PLANES]);
+int HermesAdsb_Take(Plane_t out[HERMES_NUM_PLANES], uint8_t tcs[HERMES_TCS_SIZE]);
 
 /*
  * Chamar periodicamente na task. Se nenhum bloco chegou em

@@ -18,13 +18,17 @@
         <p>Máquina de estados no STM32 · ESP32 simulando o TT&amp;C · leitura pela USB do Nucleo</p>
       </div>
     </div>
-    <div class="chips" id="chips"></div>
+    <div class="chips"><span id="chips" class="chips"></span>
+      <button class="som" id="som-btn" title="O navegador só toca som depois de um clique">🔕 Ativar aviso sonoro</button>
+      <button class="som sec" id="som-teste">Testar som</button></div>
   </header>
+  <div class="alerta" id="alerta" hidden></div>
 
   <nav class="tabs" role="tablist" id="tabs">
     <a href="#visao" role="tab" data-tab="visao">Visão geral</a>
     <a href="#ttc" role="tab" data-tab="ttc">Comandos do TT&amp;C <span class="badge" id="b-ttc"></span></a>
     <a href="#payload" role="tab" data-tab="payload">Payload <span class="badge" id="b-pld"></span></a>
+    <a href="#termico" role="tab" data-tab="termico">Térmico <span class="badge" id="b-tcs"></span></a>
     <a href="#telemetria" role="tab" data-tab="telemetria">Telemetria <span class="badge" id="b-tm"></span></a>
     <a href="#ligacoes" role="tab" data-tab="ligacoes">Ligações e pinos <span class="badge" id="b-pins"></span></a>
     <a href="#log" role="tab" data-tab="log">Histórico e log</a>
@@ -96,6 +100,28 @@
           <li><b>Validação:</b> o bloco não tem CRC; o OBC descarta registros com ICAO fora de 24 bits ou posição impossível.</li>
           <li><b>Downlink:</b> a cada 5 s o OBC manda ao TT&amp;C um quadro <b>'P'</b> com 28 B por avião (ICAO, lat, lon, altitude, velocidade, rumo, tempo da posição).</li>
           <li><b>Desligar:</b> TC sem o bit Missão; o OBC manda <code>A5 5A 00 FF</code> três vezes. Nenhum GPIO é usado.</li>
+        </ul>
+      </article>
+    </section>
+
+    <!-- ============================================================ TÉRMICO -->
+    <section class="tab" id="tab-termico" hidden>
+      <article class="card">
+        <header class="card-h"><h2>Controle térmico das baterias (TCS)</h2><span class="hint" id="tcs-meta"></span></header>
+        <div class="blocos" id="tcs-blocos"></div>
+      </article>
+      <article class="card">
+        <header class="card-h"><h2>Temperatura das sondas</h2><span class="hint">últimos 30 min · referência 20 °C · corte em 30 °C</span></header>
+        <svg class="tgraf" id="tcs-graf" viewBox="0 0 900 260" role="img" aria-label="Temperatura das 4 sondas ao longo do tempo"></svg>
+        <div class="legenda" id="tcs-leg"></div>
+      </article>
+      <article class="card">
+        <header class="card-h"><h2>Como chega aqui</h2></header>
+        <ul class="tips">
+          <li>No Pi, o serviço <b>tcs</b> roda o controlador LQI a 1 Hz em <b>modo observação</b> (<code>--sem-pwm</code>): lê as 4 sondas DS18B20 e decide o duty, <b>sem acionar os aquecedores</b>.</li>
+          <li>O <b>hermes-simples</b> lê a última linha do log do TCS e manda, a cada 5 s, um <b>trailer de 32 B com CRC</b> no fim do bloco da UART (4080 + 32 B), mesmo com a missão ADS-B desligada.</li>
+          <li>O OBC confere o CRC, usa a sonda mais fria como <code>temperatura_bateria</code> da telemetria e repassa o trailer inteiro ao TT&amp;C no quadro <b>'H'</b>.</li>
+          <li>Situação (soma de códigos): 1 sem sonda · 2 corte por temperatura alta · 4 uma sonda falhou · 8 sem calibração · 16 leitura lenta · 32 sonda discorda do outro bloco · 64 aquecedor sem resposta.</li>
         </ul>
       </article>
     </section>

@@ -29,6 +29,20 @@ int main(int argc, char **argv) { (void)argc;
     CHECK(pld_build_frame(out, n, q, 10) == 0);        /* não cabe */
     CHECK(pld_build_frame(NULL, 0, q, sizeof q) == 2); /* quadro vazio */
     FILE *o = fopen(argv[2], "wb"); fwrite(q, 1, len, o); fclose(o);
-    printf("quadro 'P' = %zu B; todos os testes OK\n", len);
+    /* trailer TCS gerado pelo hermes_simples/tcs_link.py real (vetor de referência) */
+    static const uint8_t tcsRef[HERMES_TCS_SIZE] = { 0x54, 0x43, 0x53, 0x31, 0x01, 0x01, 0x0F, 0x00, 0x02, 0x08, 0xBB, 0xFE, 0xB7, 0x07, 0x00, 0x80, 0x23, 0x64, 0x00, 0x06, 0xFD, 0x3A, 0x00, 0x00, 0x01, 0x07, 0x00, 0x00, 0x00, 0x00, 0xB3, 0xE4 };
+    PldTcs_t t;
+    CHECK(pld_crc16((const uint8_t *)"123456789", 9) == 0x29B1);
+    CHECK(pld_tcs_decode(tcsRef, &t) == 1);
+    CHECK(t.valido == 1 && t.idade_ds == 15);
+    CHECK(t.t_x100[0] == 2050 && t.t_x100[1] == -325 && t.t_x100[2] == 1975 && t.t_x100[3] == PLD_TCS_TEMP_INVALIDA);
+    CHECK(t.duty[0] == 35 && t.duty[1] == 100 && t.situacao[0] == 0 && t.situacao[1] == 6);
+    CHECK(t.t_ds == 15101 && t.missao == 1 && t.avioes == 7);
+    CHECK(pld_tcs_minima(&t) == -325);
+    uint8_t ruim[HERMES_TCS_SIZE]; memcpy(ruim, tcsRef, sizeof ruim); ruim[9] ^= 0x40;
+    CHECK(pld_tcs_decode(ruim, &t) == 0);                 /* CRC pega a corrupção */
+    uint8_t h[PLD_TCS_FRAME_SIZE];
+    CHECK(pld_build_tcs_frame(tcsRef, h, sizeof h) == 33 && h[0] == 'H' && memcmp(&h[1], tcsRef, 32) == 0);
+    printf("quadro 'P' = %zu B; trailer TCS ok; todos os testes OK\n", len);
     return 0;
 }

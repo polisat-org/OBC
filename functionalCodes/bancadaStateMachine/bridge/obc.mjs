@@ -108,7 +108,19 @@ const round = (v) => (Number.isFinite(v) ? Math.round(v * 1000) / 1000 : String(
 export const DEBUG_RULES = [
   { re: /main ready, mode=(\d+)(?: heap_livre=(\d+))?/, kind: 'boot', task: 'main', say: (m) => `OBC ligou e está pronto, em repouso (IDLE)${m[2] ? `; heap livre ${m[2]} B` : ''}`, tone: 'good' },
   // ---- payload HERMES (task Mission)
-  { re: /pld ligar/, kind: 'pld', task: 'mission', pl: (p, m, t) => { p.gpio = 'ligado'; p.lastOnAt = t; p.semDados = null; }, say: () => 'Payload: comando LIGAR pela UART (PB10 → RX0 do Pi), repetido a cada 2 s', tone: 'state' },
+  { re: /pld ligar/, kind: 'pld', task: 'mission', pl: (p, m, t) => { p.gpio = 'ligado'; p.lastOnAt = t; p.semDados = null; p.continua = /continua/.test(m.input); },
+    say: (m) => (/continua/.test(m.input) ? 'Bancada: payload ligado no boot (missão contínua: o SDR ouve sem parar)' : 'Payload: comando LIGAR pela UART (PB10 → RX0 do Pi), repetido a cada 2 s'), tone: 'state' },
+  { re: /pld desligar ignorado/, kind: 'pld', task: 'mission', say: () => 'Bancada: DESLIGAR do TT&C ignorado (missão contínua, payload segue ligado)', tone: 'muted' },
+  { re: /tcs trailer invalido \((\d+)\)/, kind: 'pld', task: 'mission', pl: (p, m) => { p.tcsRuins = Number(m[1]); }, say: (m) => `Trailer térmico com CRC inválido (${m[1]} no total)`, tone: 'bad' },
+  { re: /tcs t=(-?\d+),(-?\d+),(-?\d+),(-?\d+) duty=(\d+),(\d+) sit=(\d+),(\d+) idade=(\d+) valido=(\d)/, kind: 'tcs', task: 'mission',
+    pl: (p, m, t) => {
+      const temp = (x) => (Number(x) === -32768 ? null : Number(x) / 100);
+      const tcs = { sondas: [temp(m[1]), temp(m[2]), temp(m[3]), temp(m[4])], duty: [+m[5], +m[6]], sit: [+m[7], +m[8]],
+        idade: +m[9] === 65535 ? null : +m[9] / 10, valido: m[10] === '1', at: t };
+      p.tcs = tcs; p.tcsFrames = (p.tcsFrames ?? 0) + 1;
+      p.tcsHist = [...(p.tcsHist ?? []), { t, s: tcs.sondas, duty: tcs.duty }].slice(-360);
+    },
+    say: null, tone: 'muted' },
   { re: /pld desligar/, kind: 'pld', task: 'mission', pl: (p, m, t) => { p.gpio = 'desligado'; p.lastOffAt = t; }, say: () => 'Payload: comando DESLIGAR pela UART (enviado 3 vezes)', tone: 'state' },
   { re: /pld bloco (\d+): (\d+) avioes, (\d+) vazios, (\d+) descartados/, kind: 'pld', task: 'mission',
     pl: (p, m, t) => { p.blocks = Number(m[1]); p.lastBlock = { validos: +m[2], vazios: +m[3], descartados: +m[4] }; p.lastBlockAt = t; p.descartadosTotal += +m[4]; p.semDados = null; },
@@ -213,6 +225,20 @@ export function computeChecks(s, now) {
     pl.descartadosTotal ? `${pl.descartadosTotal} registros implausíveis descartados (ruído na UART?)` : 'nenhum registro implausível');
   if (pl.downlinks) add('Payload (Raspberry)', 'Aviões repassados ao TT&C', 'ok', `${pl.downlinks} quadros 'P' (último com ${pl.lastDownlink.n} aviões, ${pl.lastDownlink.bytes} B)`);
   else if (pl.blocks) add('Payload (Raspberry)', 'Aviões repassados ao TT&C', 'pending', "um quadro 'P' a cada 5 s com a missão ligada", '');
+  // Controle térmico das baterias (TCS no Pi, modo observação)
+  if (pl.tcs) {
+    const idade = secs(pl.tcs.at);
+    if (idade > 15) add('Controle térmico (TCS)', 'Trailer térmico chegando ao OBC', 'fail', `último há ${idade} s (vem a cada 5 s junto com o bloco do Pi)`, 'Confira o hermes-simples no Pi (journalctl -u hermes-simples) e o fio pino 8 → PB11.');
+    else add('Controle térmico (TCS)', 'Trailer térmico chegando ao OBC', 'ok', `${pl.tcsFrames} trailers com CRC ok; repassados ao TT&C no quadro 'H'`);
+    if (!pl.tcs.valido) add('Controle térmico (TCS)', 'TCS rodando no Pi', 'fail', pl.tcs.idade == null ? 'nenhum log do TCS' : `última linha do TCS com ${pl.tcs.idade.toFixed(1)} s`, 'No Pi: systemctl status tcs (o serviço roda em modo observação).');
+    else add('Controle térmico (TCS)', 'TCS rodando no Pi', 'ok', `linha com ${pl.tcs.idade.toFixed(1)} s; ${pl.tcs.sondas.filter((x) => x != null).length} de 4 sondas válidas`);
+    const sit = Math.max(...pl.tcs.sit);
+    if (sit) add('Controle térmico (TCS)', 'Situação dos blocos', (sit & (1 | 32 | 64)) ? 'fail' : 'warn', `códigos A=${pl.tcs.sit[0]} B=${pl.tcs.sit[1]}`, 'Ver a legenda na aba Térmico.');
+    const tmin = Math.min(...pl.tcs.sondas.filter((x) => x != null));
+    if (Number.isFinite(tmin) && tmin <= 0) add('Controle térmico (TCS)', 'Bateria acima de 0 °C (regra da prova)', 'fail', `sonda mais fria em ${tmin.toFixed(2)} °C`);
+  } else if (pl.blocks || s.link.lines > 20) add('Controle térmico (TCS)', 'Trailer térmico chegando ao OBC', 'pending', 'chega a cada 5 s junto com o bloco do Pi (mesmo com a missão desligada)', '');
+  if (pl.tcsRuins) add('Controle térmico (TCS)', 'Trailers íntegros', 'warn', `${pl.tcsRuins} trailers com CRC inválido`);
+
   if (pl.resyncs || pl.uartErros) add('Payload (Raspberry)', 'Enlace USART3 estável', 'warn', `${pl.resyncs} realinhamentos, ${pl.uartErros} erros de UART`);
 
   // Telemetria e sensores

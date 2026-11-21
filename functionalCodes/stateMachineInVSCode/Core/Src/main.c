@@ -689,6 +689,12 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 #define PLD_DOWNLINK_MS      5000U    /* um quadro 'P' ao TT&C a cada 5 s */
 #define PLD_SEM_DADOS_MS     20000U   /* aviso: missão ligada e nenhum bloco (o dump1090 leva até 15 s) */
 
+/* Última leitura do TCS (controle térmico das baterias, no Pi), para a telemetria.
+ * Escrita pela task Mission, lida pelo housekeeping (palavras de 32 bits: atômicas no M4). */
+static volatile int32_t g_tcsMinimaX100 = PLD_TCS_TEMP_INVALIDA;
+static volatile uint32_t g_tcsTick = 0U;
+#define TCS_VALIDADE_MS 15000U
+
 static void payloadComando(uint8_t cmd)
 {
 	uint8_t q[4] = { 0xA5U, 0x5AU, cmd, (uint8_t)(cmd ^ 0xFFU) };
@@ -817,7 +823,17 @@ void StartHousekeepTask(void *argument)
 	  osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, osWaitForever);
 	  BME280_readSingleShot(&BMEBat);
 
-	  telemetryPacket.temperatura_bateria = telemetryPacket.temperatura_estrutura = BMEBat.READ.TEMP;
+	  telemetryPacket.temperatura_estrutura = BMEBat.READ.TEMP;
+	  /* Bateria: a sonda mais fria do TCS (o limite da prova é a bateria acima de 0 °C);
+	   * sem TCS recente, cai no BME280 como antes. */
+	  int32_t tcsMin = g_tcsMinimaX100;
+	  uint32_t tcsTick = g_tcsTick;
+	  if (tcsTick != 0U && tcsMin != PLD_TCS_TEMP_INVALIDA
+			  && (osKernelGetTickCount() - tcsTick) < TCS_VALIDADE_MS) {
+		  telemetryPacket.temperatura_bateria = (float)tcsMin / 100.0f;
+	  } else {
+		  telemetryPacket.temperatura_bateria = BMEBat.READ.TEMP;
+	  }
 	  telemetryPacket.umidade = BMEBat.READ.HMDT;
 	  telemetryPacket.pressao = BMEBat.READ.PSSR;
 	  Get_Time(&telemetryPacket.segundo, &telemetryPacket.minuto, &telemetryPacket.hora, &telemetryPacket.dia, NULL, &telemetryPacket.mes, &telemetryPacket.ano);
@@ -996,8 +1012,11 @@ void StartMissionTask(void *argument)
 	 * 4080 B (DMA na USART3), valida e repassa ao TT&C a cada 5 s.
 	 * A missão termina quando o solo manda um TC sem o bit Mission (TASK_STOP_FLAG). */
 	static Plane_t blocos[HERMES_NUM_PLANES];
+	static uint8_t tcsBruto[HERMES_TCS_SIZE];
+	static uint8_t quadroH[PLD_TCS_FRAME_SIZE];
 	static PlaneDown_t avioes[PLD_DOWN_MAX_PLANES];
 	static uint8_t quadro[PLD_DOWN_FRAME_MAX];
+	uint32_t tcsRuins = 0U;
 	size_t nAvioes = 0U;
 	bool temDados = false;
 	bool missao = false;
@@ -1011,6 +1030,15 @@ void StartMissionTask(void *argument)
 
 	HermesAdsb_SetNotifyTask(osThreadGetId());
 
+#if defined(BANCADA_MISSAO_CONTINUA) && BANCADA_MISSAO_CONTINUA
+	/* Bancada: payload ligado desde o boot e o DESLIGAR do TT&C ignorado, para o SDR ouvir sem
+	 * parar. Nunca usar em voo (build normal não define BANCADA_MISSAO_CONTINUA). */
+	missao = true;
+	inicioMissao = ultimoDownlink = ultimoComando = osKernelGetTickCount();
+	payloadComando(PLD_CMD_LIGAR);
+	debugPrintf("[%08lu] pld ligar (bancada: missao continua)\r\n", osKernelGetTickCount());
+#endif
+
 	for (;;)
 	{
 		uint32_t flags = osThreadFlagsWait(TASK_START_FLAG | TASK_STOP_FLAG | HERMES_ADSB_FLAG,
@@ -1021,6 +1049,12 @@ void StartMissionTask(void *argument)
 		{
 			if ((flags & TASK_STOP_FLAG) != 0U)
 			{
+#if defined(BANCADA_MISSAO_CONTINUA) && BANCADA_MISSAO_CONTINUA
+				debugPrintf("[%08lu] pld desligar ignorado (bancada: missao continua)\r\n", osKernelGetTickCount());
+			}
+			if (0)
+			{
+#endif
 				missao = false;
 				for (uint32_t k = 0U; k < PLD_CMD_OFF_VEZES; k++)
 				{
@@ -1051,16 +1085,45 @@ void StartMissionTask(void *argument)
 		}
 
 		const HermesAdsbStats_t *st = HermesAdsb_Stats();
-		while (HermesAdsb_Take(blocos))
+		while (HermesAdsb_Take(blocos, tcsBruto))
 		{
-			PldCompactStats_t cs;
-			nAvioes = pld_compact(blocos, avioes, &cs);
-			temDados = true;
 			ultimoBloco = agora;
-			avisouSemDados = false;
-			debugPrintf("[%08lu] pld bloco %lu: %u avioes, %u vazios, %u descartados\r\n",
-					osKernelGetTickCount(), (unsigned long)st->buffers,
-					(unsigned int)cs.validos, (unsigned int)cs.vazios, (unsigned int)cs.descartados);
+			if (missao)
+			{
+				PldCompactStats_t cs;
+				nAvioes = pld_compact(blocos, avioes, &cs);
+				temDados = true;
+				avisouSemDados = false;
+				debugPrintf("[%08lu] pld bloco %lu: %u avioes, %u vazios, %u descartados\r\n",
+						osKernelGetTickCount(), (unsigned long)st->buffers,
+						(unsigned int)cs.validos, (unsigned int)cs.vazios, (unsigned int)cs.descartados);
+			}
+
+			/* Trailer térmico do TCS: vai para a telemetria e, inteiro, ao TT&C (quadro 'H'). */
+			PldTcs_t tcs;
+			if (pld_tcs_decode(tcsBruto, &tcs))
+			{
+				if (tcs.valido)
+				{
+					g_tcsMinimaX100 = pld_tcs_minima(&tcs);
+					g_tcsTick = agora;
+				}
+				size_t lenH = pld_build_tcs_frame(tcsBruto, quadroH, sizeof(quadroH));
+				if (lenH > 0U)
+				{
+					payloadEnviaDownlink(quadroH, lenH);
+				}
+				debugPrintf("[%08lu] tcs t=%d,%d,%d,%d duty=%u,%u sit=%u,%u idade=%u valido=%u\r\n",
+						osKernelGetTickCount(), (int)tcs.t_x100[0], (int)tcs.t_x100[1], (int)tcs.t_x100[2],
+						(int)tcs.t_x100[3], (unsigned int)tcs.duty[0], (unsigned int)tcs.duty[1],
+						(unsigned int)tcs.situacao[0], (unsigned int)tcs.situacao[1],
+						(unsigned int)tcs.idade_ds, (unsigned int)tcs.valido);
+			}
+			else
+			{
+				tcsRuins++;
+				debugPrintf("[%08lu] tcs trailer invalido (%lu)\r\n", osKernelGetTickCount(), (unsigned long)tcsRuins);
+			}
 		}
 
 		HermesAdsb_CheckTimeout(agora);

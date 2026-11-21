@@ -14,7 +14,7 @@ const check = (label) => S.checks.find((c) => c.label === label);
 let S = null;
 
 // --------------------------------------------------------------------- abas
-const TABS = ['visao', 'ttc', 'payload', 'telemetria', 'ligacoes', 'log'];
+const TABS = ['visao', 'ttc', 'payload', 'termico', 'telemetria', 'ligacoes', 'log'];
 function showTab() {
   const t = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'visao';
   for (const id of TABS) $(`tab-${id}`).hidden = id !== t;
@@ -91,6 +91,8 @@ function renderTop() {
   badge('b-tm', S.telemetry.count ? 'ok' : '', S.telemetry.count || '');
   const pl = S.payload;
   badge('b-pld', pl.semDados && !pl.blocks ? 'fail' : pl.blocks ? 'ok' : '', pl.semDados && !pl.blocks ? '!' : pl.blocks || '');
+  const tf = S.checks.filter((c) => c.group === 'Controle térmico (TCS)' && c.status === 'fail').length;
+  badge('b-tcs', tf ? 'fail' : pl.tcs ? 'ok' : '', tf ? '!' : pl.tcs ? '✓' : '');
 }
 function badge(id, cls, txt) { const e = $(id); e.className = `badge ${cls}`; e.textContent = txt; }
 
@@ -133,6 +135,13 @@ function renderSummary() {
   else if (pl.semDados) cards.splice(2, 0, ['fail', 'Payload', 'sem dados', 'missão ligada e o Pi não mandou nada', 'payload']);
   else if (pl.gpio === 'ligado') cards.splice(2, 0, ['pending', 'Payload', 'ligando', `LIGAR enviado ${ago(pl.lastOnAt, n)}; 1º bloco em até ~20 s`, 'payload']);
   else cards.splice(2, 0, ['pending', 'Payload', 'desligado', 'liga com o bit Missão do TT&C', 'payload']);
+  const tc = pl.tcs;
+  if (tc && S.now - tc.at < 15000) {
+    const v = tc.sondas.filter((x) => x != null);
+    const tmin = v.length ? Math.min(...v) : null;
+    cards.splice(3, 0, [tc.valido && !Math.max(...tc.sit) ? 'ok' : tc.valido ? 'warn' : 'fail', 'Baterias (TCS)',
+      tmin != null ? `${tmin.toFixed(1)} °C` : 'sem sonda', `sonda mais fria · aquecedores ${tc.duty[0]} % / ${tc.duty[1]} % (observação)`, 'termico']);
+  } else cards.splice(3, 0, ['pending', 'Baterias (TCS)', 'aguardando', 'trailer térmico a cada 5 s', 'termico']);
   $('summary').innerHTML = cards.map(([s, k, big, d, tab]) => `<a class="sum ${s}" href="#${tab}">
     <div class="top-row"><span class="k">${k}</span>${st(s)}</div><div class="big">${esc(big)}</div><div class="d">${esc(d)}</div></a>`).join('');
 
@@ -381,6 +390,119 @@ function renderMap() {
   $('pld-map').innerHTML = g;
 }
 
+// ----------------------------------------------------------------- térmico
+const CORES = ['#3987e5', '#d95926', '#199e70', '#c98500'];   // paleta categórica (dark), ordem fixa
+const SIT = [[1, 'sem sonda'], [2, 'corte por temperatura alta'], [4, 'uma sonda falhou'], [8, 'sem calibração'],
+  [16, 'leitura lenta'], [32, 'sonda discorda do outro bloco'], [64, 'aquecedor sem resposta']];
+const sitTexto = (c) => (c ? SIT.filter(([b]) => c & b).map(([, t]) => t).join(', ') : 'normal');
+function renderTermico() {
+  const tc = S.payload.tcs;
+  const n = S.now;
+  $('tcs-meta').textContent = tc ? `trailer ${ago(tc.at, n)} · linha do TCS com ${tc.idade == null ? '—' : tc.idade.toFixed(1) + ' s'} · modo observação (aquecedores não acionados)` : 'aguardando o primeiro trailer (a cada 5 s)';
+  const blocos = [['A', 0, [0, 1]], ['B', 1, [2, 3]]];
+  $('tcs-blocos').innerHTML = blocos.map(([b, i, ss]) => {
+    const sit = tc ? tc.sit[i] : 0;
+    const cls = !tc ? '' : (sit & (1 | 32 | 64)) ? 'fail' : sit ? 'warn' : '';
+    const stt = !tc ? 'pending' : (sit & (1 | 32 | 64)) ? 'fail' : sit ? 'warn' : 'ok';
+    return `<div class="bloco ${cls}"><h3>Bloco ${b} ${st(stt)}</h3><div class="sondas">${ss.map((k) => {
+      const v = tc ? tc.sondas[k] : null;
+      return `<div class="sonda"><div class="k"><i style="display:inline-block;width:10px;height:3px;background:${CORES[k]};vertical-align:middle;margin-right:6px"></i>Sonda ${k + 1}</div><div class="v">${v == null ? '—' : v.toFixed(2)} <small>°C</small></div></div>`;
+    }).join('')}</div>
+      <div class="duty"><div class="row"><span>Aquecedor (decisão do LQI)</span><b>${tc ? tc.duty[i] : 0} %</b></div><div class="bar"><div style="width:${tc ? tc.duty[i] : 0}%"></div></div></div>
+      <div class="sit">Situação ${sit}: ${sitTexto(sit)}</div></div>`;
+  }).join('');
+  renderTGraf();
+}
+function renderTGraf() {
+  const h = S.payload.tcsHist ?? [];
+  const W = 900, H = 260, L = 44, R = 12, T = 12, B = 28;
+  if (h.length < 2) { $('tcs-graf').innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" fill="#8c8b83" font-size="13">o gráfico começa no 2º trailer</text>`; $('tcs-leg').innerHTML = ''; return; }
+  const vals = h.flatMap((p) => p.s.filter((x) => x != null));
+  let y0 = Math.min(18, ...vals) - 1, y1 = Math.max(31, ...vals) + 1;
+  const t0 = h[0].t, t1 = h.at(-1).t;
+  const X = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R), Y = (v) => T + (1 - (v - y0) / (y1 - y0)) * (H - T - B);
+  let g = '';
+  for (let v = Math.ceil(y0 / 5) * 5; v <= y1; v += 5) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text class="gl" x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${v}°</text>`;
+  g += `<line class="ref" x1="${L}" x2="${W - R}" y1="${Y(20)}" y2="${Y(20)}"/><line class="corte" x1="${L}" x2="${W - R}" y1="${Y(30)}" y2="${Y(30)}"/>`;
+  g += `<text class="gl" x="${W - R}" y="${Y(30) - 4}" text-anchor="end">corte 30 °C</text><text class="gl" x="${W - R}" y="${Y(20) - 4}" text-anchor="end">referência 20 °C</text>`;
+  g += `<text class="gl" x="${L}" y="${H - 8}">${hhmmss(t0)}</text><text class="gl" x="${W - R}" y="${H - 8}" text-anchor="end">${hhmmss(t1)}</text>`;
+  for (let k = 0; k < 4; k++) {
+    let d = '', pen = false;
+    for (const p of h) { const v = p.s[k]; if (v == null) { pen = false; continue; } d += `${pen ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(v).toFixed(1)}`; pen = true; }
+    if (d) g += `<path class="s" d="${d}" stroke="${CORES[k]}"/>`;
+  }
+  g += `<line id="tg-x" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#8c8b83" visibility="hidden"/><rect id="tg-hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
+  $('tcs-graf').innerHTML = g;
+  const last = h.at(-1).s;
+  $('tcs-leg').innerHTML = [0, 1, 2, 3].map((k) => `<span><i style="background:${CORES[k]}"></i>Sonda ${k + 1} (bloco ${k < 2 ? 'A' : 'B'}) <b>${last[k] == null ? '—' : last[k].toFixed(2) + ' °C'}</b></span>`).join('') + '<span id="tg-tip" class="hint"></span>';
+  const svg = $('tcs-graf');
+  $('tg-hit').addEventListener('pointermove', (e) => {
+    const r = svg.getBoundingClientRect();
+    const px = ((e.clientX - r.left) / r.width) * W;
+    const p = h.reduce((a, b) => (Math.abs(X(b.t) - px) < Math.abs(X(a.t) - px) ? b : a));
+    const x = $('tg-x'); x.setAttribute('x1', X(p.t)); x.setAttribute('x2', X(p.t)); x.setAttribute('visibility', 'visible');
+    $('tg-tip').textContent = `${hhmmss(p.t)} · ` + p.s.map((v, k) => `S${k + 1} ${v == null ? '—' : v.toFixed(2)} °C`).join(' · ');
+  });
+  $('tg-hit').addEventListener('pointerleave', () => { $('tg-x').setAttribute('visibility', 'hidden'); $('tg-tip').textContent = ''; });
+}
+
+// ------------------------------------------------------ aviso sonoro (avião)
+let audio = null;
+let somLigado = false;
+let conhecidos = null;          // ICAOs já vistos quando o painel abriu (não avisa o passado)
+let validosAntes = null, blocoAntes = null;
+const tituloBase = document.title;
+function tocar() {
+  if (!audio) return;
+  const t = audio.currentTime;
+  [0, 0.28, 0.56].forEach((d, i) => {
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = 'sine'; o.frequency.value = i % 2 ? 1320 : 880;
+    g.gain.setValueAtTime(0.0001, t + d);
+    g.gain.exponentialRampToValueAtTime(0.4, t + d + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.24);
+    o.connect(g).connect(audio.destination); o.start(t + d); o.stop(t + d + 0.26);
+  });
+}
+function avisar(titulo, detalhe) {
+  if (somLigado) tocar();
+  const a = $('alerta');
+  a.hidden = false;
+  a.innerHTML = `<button class="x" aria-label="fechar">×</button><b>✈ ${esc(titulo)}</b><div class="d">${esc(detalhe)}</div><div class="d">${new Date().toLocaleTimeString('pt-BR')} · <a href="#payload">ver na aba Payload →</a></div>`;
+  a.querySelector('.x').onclick = () => { a.hidden = true; };
+  document.title = `✈ ${titulo} · ${tituloBase}`;
+  if (window.Notification && Notification.permission === 'granted' && document.hidden) new Notification(`✈ ${titulo}`, { body: detalhe });
+}
+window.addEventListener('focus', () => { document.title = tituloBase; });
+$('som-btn').onclick = async () => {
+  if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+  await audio.resume();
+  somLigado = !somLigado;
+  $('som-btn').classList.toggle('on', somLigado);
+  $('som-btn').textContent = somLigado ? '🔔 Aviso sonoro ligado' : '🔕 Ativar aviso sonoro';
+  if (somLigado) { tocar(); if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); }
+};
+$('som-teste').onclick = async () => {
+  if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+  await audio.resume();
+  tocar();
+};
+function checarAvioes() {
+  const pl = S.payload;
+  const vistos = pl.icaosVistos ?? {};
+  if (conhecidos === null) { conhecidos = new Set(Object.keys(vistos)); validosAntes = pl.lastBlock?.validos ?? 0; blocoAntes = pl.blocks; return; }
+  const novos = Object.keys(vistos).filter((k) => !conhecidos.has(k));
+  if (novos.length) {
+    novos.forEach((k) => conhecidos.add(k));
+    const p = pl.planes.find((x) => x.icao === novos[0]);
+    avisar(novos.length > 1 ? `${novos.length} aviões novos` : `Avião ${novos[0]}`,
+      p ? `${p.alt != null ? Math.round(p.alt) + ' ft' : 'altitude ?'} · ${p.gs != null ? Math.round(p.gs) + ' kt' : 'velocidade ?'} · ${p.lat != null ? p.lat.toFixed(3) + ', ' + p.lon.toFixed(3) : 'sem posição ainda'}` : novos.join(', '));
+  } else if (pl.blocks !== blocoAntes && (pl.lastBlock?.validos ?? 0) > 0 && validosAntes === 0) {
+    avisar(`${pl.lastBlock.validos} avião(ões) no bloco do Pi`, `bloco #${pl.blocks}; detalhes chegam no próximo quadro 'P'`);
+  }
+  if (pl.blocks !== blocoAntes) { validosAntes = pl.lastBlock?.validos ?? 0; blocoAntes = pl.blocks; }
+}
+
 // ---------------------------------------------------------------- ligações
 function renderPins() {
   const rows = wires();
@@ -436,7 +558,8 @@ function addRaw(e) {
 // ---------------------------------------------------------------------- SSE
 function render() {
   renderTop(); renderSummary(); renderStateMachine(); renderFeed(); renderTasks();
-  renderTtc(); renderPayload(); renderTelemetry(); renderPins();
+  renderTtc(); renderPayload(); renderTermico(); renderTelemetry(); renderPins();
+  checarAvioes();
   $('foot').textContent = `Painel aberto às ${new Date(S.startedAt).toLocaleTimeString('pt-BR')} · logs da sessão em ${S.logDir}`;
 }
 const es = new EventSource('/events');

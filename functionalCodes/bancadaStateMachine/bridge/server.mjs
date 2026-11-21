@@ -26,7 +26,7 @@ const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const STM_COM = opt('stm', 'COM18');
 const HTTP_PORT = Number(opt('http', 8780));
-const TCP_PORT = 8772;
+const TCP_PORT = Number(opt("tcp", 8772));
 const AUTO_RELAY = !args.includes('--no-relay');
 const SENSORES = args.includes('--sensores'); // sem a flag: bancada sem BME280/DS3231 (sensores não instalados)
 const now = () => Date.now();
@@ -47,7 +47,7 @@ const S = {
   housekeepPeriods: [],
   payload: { gpio: null, lastOnAt: null, lastOffAt: null, blocks: 0, lastBlock: null, lastBlockAt: null, descartadosTotal: 0,
     resyncs: 0, uartErros: 0, semDados: null, downlinks: 0, lastDownlinkAt: null, lastDownlink: null,
-    planes: [], planesAt: null, framesP: 0, tracks: {} },
+    planes: [], planesAt: null, framesP: 0, tracks: {}, tcs: null, tcsFrames: 0, tcsHist: [], tcsRuins: 0, continua: false, icaosVistos: {} },
   tcsReceived: 0,
   lastTcAt: null,
   script: { pos: 0, current: null, done: [], byIndex: {}, synced: false },
@@ -257,6 +257,7 @@ function closeGroup() {
 let lineBuf = [];
 let frame = null;
 let pFrame = null;   // quadro 'P' espelhado: { count: null | n, bytes: [] }
+let hFrame = null;   // quadro 'H' espelhado: 32 B do trailer térmico
 let lastByteAt = 0;
 function onStmData(chunk) {
   lastByteAt = now();
@@ -264,6 +265,11 @@ function onStmData(chunk) {
     if (frame) {
       frame.push(b);
       if (frame.length === TELEMETRY_SIZE) { const f = Buffer.from(frame); frame = null; onTelemetry(f); }
+      continue;
+    }
+    if (hFrame) {
+      hFrame.push(b);
+      if (hFrame.length === 32) { raw(`H + 32 B (trailer térmico): ${Buffer.from(hFrame).toString('hex')}`, 'tm'); hFrame = null; }
       continue;
     }
     if (pFrame) {
@@ -274,6 +280,7 @@ function onStmData(chunk) {
     }
     if (lineBuf.length === 0 && b === 0x54) { frame = []; continue; }
     if (lineBuf.length === 0 && b === 0x50) { pFrame = { count: null, bytes: [] }; continue; }
+    if (lineBuf.length === 0 && b === 0x48) { hFrame = []; continue; }
     if (b === 0x0a) { const l = Buffer.from(lineBuf).toString('latin1'); lineBuf = []; onStmLine(l); continue; }
     if (lineBuf.length < 512) lineBuf.push(b);
   }
@@ -304,6 +311,9 @@ function onPlanes(buf, count) {
       if (!lastPt || lastPt[0] !== pl.lat || lastPt[1] !== pl.lon) tr.push([pl.lat, pl.lon, t]);
       if (tr.length > 60) tr.splice(0, tr.length - 60);
     }
+  }
+  for (const pl of planes) {
+    if (!p.icaosVistos[pl.icao]) { p.icaosVistos[pl.icao] = t; event(`✈ Avião novo: ${pl.icao}${pl.alt != null ? `, ${Math.round(pl.alt)} ft` : ''}${pl.lat != null ? ` em ${pl.lat.toFixed(3)}, ${pl.lon.toFixed(3)}` : ' (sem posição ainda)'}`, 'good'); }
   }
   p.planes = planes; p.planesAt = t; p.framesP++;
   raw(`P + ${count} aviões (${2 + count * 28} B)`, 'tm');
@@ -380,7 +390,7 @@ function onStmLine(rawLine) {
     if (!tmFresh) { touchTask('housekeep'); if (S.firmware.bancada === null) S.firmware.bancada = false; }
   }
   touchTask(rule.task);
-  event(rule.say(mm), rule.tone);
+  if (rule.say) event(rule.say(mm), rule.tone);
   changed();
 }
 
