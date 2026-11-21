@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bancada OBC</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 32 32"><rect x="9" y="9" width="14" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M13 9V4M19 9V4M13 28v-5M19 28v-5M9 13H4M9 19H4M28 13h-5M28 19h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div>
+        <h1>Bancada OBC</h1>
+        <p>Máquina de estados no STM32 · ESP32 simulando o TT&amp;C · leitura pela USB do Nucleo</p>
+      </div>
+    </div>
+    <div class="chips" id="chips"></div>
+  </header>
+
+  <nav class="tabs" role="tablist" id="tabs">
+    <a href="#visao" role="tab" data-tab="visao">Visão geral</a>
+    <a href="#ttc" role="tab" data-tab="ttc">Comandos do TT&amp;C <span class="badge" id="b-ttc"></span></a>
+    <a href="#telemetria" role="tab" data-tab="telemetria">Telemetria <span class="badge" id="b-tm"></span></a>
+    <a href="#ligacoes" role="tab" data-tab="ligacoes">Ligações e pinos <span class="badge" id="b-pins"></span></a>
+    <a href="#log" role="tab" data-tab="log">Histórico e log</a>
+  </nav>
+
+  <main>
+    <!-- ============================================================ VISÃO GERAL -->
+    <section class="tab" id="tab-visao">
+      <div class="summary" id="summary"></div>
+      <div class="todo" id="todo"></div>
+
+      <div class="cols-2">
+        <article class="card">
+          <header class="card-h"><h2>Máquina de estados</h2><span class="hint" id="mode-hint"></span></header>
+          <div class="sm-wrap">
+            <svg class="sm" id="sm" viewBox="0 0 560 330" role="img" aria-label="Diagrama da máquina de estados"></svg>
+            <div class="sm-side" id="sm-side"></div>
+          </div>
+          <div class="timers" id="timers"></div>
+        </article>
+
+        <article class="card">
+          <header class="card-h"><h2>Acontecendo agora</h2><a class="link" href="#log">ver tudo →</a></header>
+          <ol class="feed" id="feed"></ol>
+          <h3 class="sub">Tasks do FreeRTOS</h3>
+          <div class="tasks" id="tasks"></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============================================================ TT&C -->
+    <section class="tab" id="tab-ttc" hidden>
+      <article class="card">
+        <header class="card-h">
+          <h2>Roteiro do TT&amp;C simulado</h2>
+          <span class="hint">O ESP32 manda um comando a cada 15 s. Para cada um, o painel prevê o que o handleTelecommand() deveria fazer e confere no debug.</span>
+        </header>
+        <div id="script-now"></div>
+        <div class="score" id="score"></div>
+        <ol class="steps" id="steps"></ol>
+      </article>
+      <article class="card">
+        <header class="card-h"><h2>Como ler o comando</h2></header>
+        <div class="bits-help" id="bits-help"></div>
+      </article>
+    </section>
+
+    <!-- ============================================================ TELEMETRIA -->
+    <section class="tab" id="tab-telemetria" hidden>
+      <article class="card">
+        <header class="card-h"><h2>Telemetria</h2><span class="hint" id="tm-meta"></span></header>
+        <div class="tiles" id="tiles"></div>
+      </article>
+      <article class="card">
+        <header class="card-h"><h2>Todos os campos do pacote</h2><span class="hint">struct Telemetry de customTypes.h · 85 bytes · grupos tracejados ainda não são preenchidos pelo firmware</span></header>
+        <div class="groups" id="groups"></div>
+        <details class="more"><summary>Pacote cru em hexadecimal</summary><pre class="hex" id="hex"></pre></details>
+      </article>
+    </section>
+
+    <!-- ============================================================ LIGAÇÕES -->
+    <section class="tab" id="tab-ligacoes" hidden>
+      <article class="card">
+        <header class="card-h"><h2>Diagrama da bancada</h2><span class="hint">TX de um lado sempre vai no RX do outro</span></header>
+        <svg class="wiring" id="wiring" viewBox="0 0 900 360" role="img" aria-label="Diagrama de ligação entre Nucleo, ESP32 e sensores"></svg>
+      </article>
+      <article class="card">
+        <header class="card-h"><h2>Tabela de pinos para conferir</h2><span class="hint">status ao vivo, tirado do que o STM32 está mostrando</span></header>
+        <div class="table-wrap"><table class="pins" id="pins"></table></div>
+      </article>
+      <article class="card">
+        <header class="card-h"><h2>Erros comuns</h2></header>
+        <ul class="tips">
+          <li><b>TX ligado em TX (ou RX em RX):</b> nada passa nos dois sentidos. O TX do ESP32 (GPIO17) vai no RX do Nucleo (D2), e o TX do Nucleo (D8) vai no RX do ESP32 (GPIO16).</li>
+          <li><b>Fio no D9 em vez do D2:</b> o D9 é o PC7, que não tem UART. O RX da USART1 é o <b>D2 (PA10)</b>.</li>
+          <li><b>D0/D1 do Nucleo:</b> não estão ligados ao microcontrolador de fábrica (pontes SB62/SB63 abertas). Não use.</li>
+          <li><b>Sem GND comum:</b> os sinais não têm referência. Ligue um GND do Nucleo a um GND do ESP32.</li>
+          <li><b>ESP32 sem USB:</b> precisa de alimentação. Ligue o VIN do ESP32 ao 5V do Nucleo (e o GND).</li>
+          <li><b>Pinos GPIO1/GPIO3 do ESP32 (TX0/RX0):</b> são a USB do próprio ESP32. Não use para o OBC.</li>
+        </ul>
+      </article>
+    </section>
+
+    <!-- ============================================================ LOG -->
+    <section class="tab" id="tab-log" hidden>
+      <div class="cols-2">
+        <article class="card">
+          <header class="card-h"><h2>Histórico</h2><span class="hint">mais recente no topo</span></header>
+          <ol class="feed long" id="timeline"></ol>
+        </article>
+        <article class="card">
+          <header class="card-h"><h2>Log técnico</h2><span class="hint" id="rawcount">USART2 crua</span></header>
+          <div class="raw" id="raw"></div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot" id="foot"></footer>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
