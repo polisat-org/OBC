@@ -47,6 +47,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/bme280.c;
     Core/Src/ds3231.c;
     Core/Src/freertos.c;
+    Core/Src/hermes_adsb.c;
+    Core/Src/hermes_protocol.c;
+    Core/Src/payload_downlink.c;
     
     # Add user sources here
 )

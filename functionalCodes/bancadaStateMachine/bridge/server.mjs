@@ -45,6 +45,9 @@ const S = {
   tasks: freshTasks(),
   telemetry: { last: null, lastAt: null, count: 0, partial: 0, hex: null, history: [] },
   housekeepPeriods: [],
+  payload: { gpio: null, lastOnAt: null, lastOffAt: null, blocks: 0, lastBlock: null, lastBlockAt: null, descartadosTotal: 0,
+    resyncs: 0, uartErros: 0, semDados: null, downlinks: 0, lastDownlinkAt: null, lastDownlink: null,
+    planes: [], planesAt: null, framesP: 0, tracks: {} },
   tcsReceived: 0,
   lastTcAt: null,
   script: { pos: 0, current: null, done: [], byIndex: {}, synced: false },
@@ -120,14 +123,14 @@ function expectFor(st, tc) {
   if ((tc & 0x08) && !(tc & 0x04)) { if (mode !== 3) { e.push(/pointing ON/); mode = 3; } }
   else if (mode === 3) { e.push(/pointing STOP/); mode = 0; }
   if ((tc & 0x08) && (tc & 0x04)) f.push(/pointing ON/);
-  if (tc & 0x01) { if (!st.missionActive) { e.push(/mission ON/, /mission task ran/); if (mode === 0) e.push(/mission done/); } }
-  else if (st.missionActive) e.push(/mission OFF/);
+  if (tc & 0x01) { if (!st.missionActive) e.push(/mission ON/, /pld ligar/); }
+  else if (st.missionActive) e.push(/mission OFF/, /pld desligar/);
   return { expect: e, forbid: f };
 }
 const HUMAN = [
   [/detumbling ON/, 'ligar detumbling'], [/detumbling task ran/, 'rodar task Detumbling'], [/detumbling done/, 'concluir detumbling'],
   [/detumbling STOP/, 'parar detumbling'], [/pointing ON/, 'ligar pointing'], [/pointing STOP/, 'parar pointing'],
-  [/mission ON/, 'ligar missão'], [/mission task ran/, 'rodar task Mission'], [/mission done/, 'concluir missão'], [/mission OFF/, 'desligar missão'],
+  [/mission ON/, 'ligar missão'], [/pld ligar/, 'mandar LIGAR ao payload'], [/mission OFF/, 'desligar missão'], [/pld desligar/, 'mandar DESLIGAR ao payload'],
   [/rx accepted: deploy/, 'iniciar deploy'], [/deploy task ran/, 'rodar task Deploy'], [/deploy done/, 'concluir deploy'],
   [/rx rejected: invalid mask/, 'rejeitar o comando'], [/rx ignored: deploy in progress/, 'ignorar o comando'],
 ];
@@ -253,6 +256,7 @@ function closeGroup() {
 // Linhas de debug começam com '['; um quadro de telemetria é 'T' + 85 bytes no início de uma linha.
 let lineBuf = [];
 let frame = null;
+let pFrame = null;   // quadro 'P' espelhado: { count: null | n, bytes: [] }
 let lastByteAt = 0;
 function onStmData(chunk) {
   lastByteAt = now();
@@ -262,7 +266,14 @@ function onStmData(chunk) {
       if (frame.length === TELEMETRY_SIZE) { const f = Buffer.from(frame); frame = null; onTelemetry(f); }
       continue;
     }
+    if (pFrame) {
+      if (pFrame.count === null) { pFrame.count = b; if (b > 20) { raw(`quadro 'P' com count inválido (${b})`, 'error'); pFrame = null; } else if (b === 0) { onPlanes(Buffer.alloc(0), 0); pFrame = null; } continue; }
+      pFrame.bytes.push(b);
+      if (pFrame.bytes.length === pFrame.count * 28) { const c = pFrame.count, buf = Buffer.from(pFrame.bytes); pFrame = null; onPlanes(buf, c); }
+      continue;
+    }
     if (lineBuf.length === 0 && b === 0x54) { frame = []; continue; }
+    if (lineBuf.length === 0 && b === 0x50) { pFrame = { count: null, bytes: [] }; continue; }
     if (b === 0x0a) { const l = Buffer.from(lineBuf).toString('latin1'); lineBuf = []; onStmLine(l); continue; }
     if (lineBuf.length < 512) lineBuf.push(b);
   }
@@ -276,6 +287,28 @@ setInterval(() => {
     changed();
   }
 }, 200);
+
+function onPlanes(buf, count) {
+  const p = S.payload;
+  const t = now();
+  const planes = [];
+  for (let k = 0; k < count; k++) {
+    const o = k * 28;
+    const pl = { icao: buf.readUInt32LE(o).toString(16).toUpperCase().padStart(6, '0'), lat: buf.readFloatLE(o + 4), lon: buf.readFloatLE(o + 8),
+      alt: buf.readFloatLE(o + 12), gs: buf.readFloatLE(o + 16), track: buf.readFloatLE(o + 20), posMetMs: buf.readUInt32LE(o + 24) };
+    for (const f of ['lat', 'lon', 'alt', 'gs', 'track']) pl[f] = Number.isFinite(pl[f]) ? Math.round(pl[f] * 10000) / 10000 : null;
+    planes.push(pl);
+    if (pl.lat != null && pl.lon != null) {
+      const tr = (p.tracks[pl.icao] ??= []);
+      const lastPt = tr.at(-1);
+      if (!lastPt || lastPt[0] !== pl.lat || lastPt[1] !== pl.lon) tr.push([pl.lat, pl.lon, t]);
+      if (tr.length > 60) tr.splice(0, tr.length - 60);
+    }
+  }
+  p.planes = planes; p.planesAt = t; p.framesP++;
+  raw(`P + ${count} aviões (${2 + count * 28} B)`, 'tm');
+  changed();
+}
 
 const touchTask = (id) => { const t = S.tasks[id]; t.count++; t.lastAt = now(); };
 
@@ -322,6 +355,7 @@ function onStmLine(rawLine) {
       boots: o.boots + 1, lastBootAt: now(), lastHkTick: null });
     S.tasks = freshTasks();
     S.housekeepPeriods = [];
+    Object.assign(S.payload, { gpio: null, lastOnAt: null, lastOffAt: null, semDados: null });
   }
   if (rule.kind === 'tc') {
     S.tcsReceived++; S.lastTcAt = now(); S.firmware.bancada = true; S.firmware.tcVisivel = true;
@@ -335,6 +369,7 @@ function onStmLine(rawLine) {
   if (rule.fn) rule.fn(o);
   if (rule.mode && mm[1] !== undefined) o.mode = Number(mm[1]);
   if (rule.kind === 'uart_error') o.uartErrors++;
+  if (rule.pl) rule.pl(S.payload, mm, now());
   if (rule.kind === 'tx') {
     if (tick !== null && o.lastHkTick !== null && tick > o.lastHkTick) S.housekeepPeriods = [...S.housekeepPeriods, (tick - o.lastHkTick) / 1000].slice(-20);
     if (tick !== null) o.lastHkTick = tick;

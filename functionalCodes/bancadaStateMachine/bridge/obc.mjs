@@ -5,7 +5,7 @@
 export const MODES = ['IDLE', 'MISSION', 'DETUMBLING', 'POINTING']; // SatMode_t (customTypes.h)
 export const MODE_INFO = {
   IDLE: { titulo: 'Repouso', texto: 'Só Main, Housekeeping e Receive ativas, esperando comandos.' },
-  MISSION: { titulo: 'Missão ADS-B', texto: 'Task Mission ativa (ainda é um esqueleto: roda e termina).' },
+  MISSION: { titulo: 'Missão ADS-B', texto: 'Payload ligado (comando LIGAR pela UART): o Pi manda os aviões e o OBC repassa ao TT&C.' },
   DETUMBLING: { titulo: 'Detumbling', texto: 'ADCS reduzindo a rotação (task esqueleto: roda e termina).' },
   POINTING: { titulo: 'Apontamento', texto: 'Busca de azimute. Ainda não tem task: só muda o modo.' },
 };
@@ -25,7 +25,7 @@ export const TASKS = [
   { id: 'receive', name: 'Receive', papel: 'trata erros da UART do TT&C', prio: 'Low' },
   { id: 'deploy', name: 'Deploy', papel: 'abre a antena (esqueleto)', prio: 'Low' },
   { id: 'detumbling', name: 'Detumbling', papel: 'liga o ADCS (esqueleto)', prio: 'Low' },
-  { id: 'mission', name: 'Mission', papel: 'liga a carga útil (esqueleto)', prio: 'Low' },
+  { id: 'mission', name: 'Mission', papel: 'gerencia o payload (USART3)', prio: 'Low' },
 ];
 
 // ------------------------------------------------------------ roteiro do TT&C
@@ -39,7 +39,7 @@ export const TTC_SCRIPT = [
   { tc: 0x08, desc: 'Liga pointing (azimute)', expect: [/pointing ON/] },
   { tc: 0x00, desc: 'Desliga pointing', expect: [/pointing STOP/] },
   { tc: 0x01, desc: 'Liga missão ADS-B', expect: [/mission ON/, /mission task ran/, /mission done, mode=0/] },
-  { tc: 0x00, desc: 'Desliga tudo', expect: [], info: 'a missão já tinha terminado (task esqueleto)' },
+  { tc: 0x00, desc: 'Desliga tudo (missão e payload)', expect: [] },
   { tc: 0x0c, desc: 'Detumbling + pointing: detumbling tem prioridade', expect: [/detumbling ON/, /detumbling done/], forbid: [/pointing ON/] },
   { tc: 0x09, desc: 'Pointing + missão ao mesmo tempo', expect: [/pointing ON/, /mission ON/, /mission task ran/] },
   { tc: 0x00, desc: 'Desliga tudo', expect: [/pointing STOP/] },
@@ -106,7 +106,17 @@ const round = (v) => (Number.isFinite(v) ? Math.round(v * 1000) / 1000 : String(
 // ------------------------------------------------------------ debug (USART2)
 // Linhas "[%08lu] texto". Cada regra: efeito no estado inferido + frase em português para a linha do tempo.
 export const DEBUG_RULES = [
-  { re: /main ready, mode=(\d+)/, kind: 'boot', task: 'main', say: () => 'OBC ligou e está pronto, em repouso (IDLE)', tone: 'good' },
+  { re: /main ready, mode=(\d+)(?: heap_livre=(\d+))?/, kind: 'boot', task: 'main', say: (m) => `OBC ligou e está pronto, em repouso (IDLE)${m[2] ? `; heap livre ${m[2]} B` : ''}`, tone: 'good' },
+  // ---- payload HERMES (task Mission)
+  { re: /pld ligar/, kind: 'pld', task: 'mission', pl: (p, m, t) => { p.gpio = 'ligado'; p.lastOnAt = t; p.semDados = null; }, say: () => 'Payload: comando LIGAR pela UART (PB10 → RX0 do Pi), repetido a cada 2 s', tone: 'state' },
+  { re: /pld desligar/, kind: 'pld', task: 'mission', pl: (p, m, t) => { p.gpio = 'desligado'; p.lastOffAt = t; }, say: () => 'Payload: comando DESLIGAR pela UART (enviado 3 vezes)', tone: 'state' },
+  { re: /pld bloco (\d+): (\d+) avioes, (\d+) vazios, (\d+) descartados/, kind: 'pld', task: 'mission',
+    pl: (p, m, t) => { p.blocks = Number(m[1]); p.lastBlock = { validos: +m[2], vazios: +m[3], descartados: +m[4] }; p.lastBlockAt = t; p.descartadosTotal += +m[4]; p.semDados = null; },
+    say: (m) => `Bloco do Pi #${m[1]} (4080 B): ${m[2]} aviões${+m[4] ? `, ${m[4]} registros descartados` : ''}`, tone: 'tm' },
+  { re: /pld resync (\d+)/, kind: 'pld', task: 'mission', pl: (p, m) => { p.resyncs = Number(m[1]); }, say: (m) => `Payload: DMA realinhado (resync ${m[1]}): nenhum bloco completo em 7 s`, tone: 'warn' },
+  { re: /pld erro uart (\d+)/, kind: 'pld', task: 'mission', pl: (p, m) => { p.uartErros = Number(m[1]); }, say: (m) => `Payload: erro na USART3 (${m[1]} no total)`, tone: 'bad' },
+  { re: /pld sem dados ha (\d+) s/, kind: 'pld', task: 'mission', pl: (p, m, t) => { p.semDados = { s: Number(m[1]), at: t }; }, say: (m) => `Payload: missão ligada e nenhum bloco do Pi há ${m[1]} s`, tone: 'bad' },
+  { re: /ttc tx P n=(\d+) \((\d+) B\)/, kind: 'pld', task: 'mission', pl: (p, m, t) => { p.downlinks++; p.lastDownlinkAt = t; p.lastDownlink = { n: +m[1], bytes: +m[2] }; }, say: (m) => `Aviões repassados ao TT&C: quadro 'P' com ${m[1]} (${m[2]} B)`, tone: 'muted' },
   { re: /rx tc=0x([0-9A-F]{2})/i, kind: 'tc', task: 'main', say: (m) => `Comando do TT&C recebido: 0x${m[1].toUpperCase()} (${describeTc(parseInt(m[1], 16))})`, tone: 'tc' },
   { re: /rx rejected: invalid mask 0x([0-9A-F]{2})/i, kind: 'rx', task: 'main', say: (m) => `Comando 0x${m[1]} rejeitado: bits inválidos`, tone: 'warn' },
   { re: /rx ignored: deploy in progress/, kind: 'rx', task: 'main', say: () => 'Comando ignorado: deploy em andamento', tone: 'warn' },
@@ -189,6 +199,21 @@ export function computeChecks(s, now) {
   for (const t of ['detumbling', 'mission', 'deploy']) {
     if (s.tasks[t].count) add('TT&C simulado (ESP32)', `Task ${s.tasks[t].name} acionada por comando`, 'ok', `${s.tasks[t].count}x (ainda é esqueleto: só imprime e termina)`);
   }
+
+  // Payload (Raspberry Pi, HERMES Simples)
+  const pl = s.payload;
+  if (pl.gpio === 'ligado') add('Payload (Raspberry)', 'OBC liga o payload (comando UART)', 'ok', `LIGAR enviado ${secs(pl.lastOnAt)} s atrás (repete a cada 2 s)`);
+  else if (pl.lastOffAt) add('Payload (Raspberry)', 'OBC liga o payload (comando UART)', 'ok', `DESLIGAR enviado ${secs(pl.lastOffAt)} s atrás`);
+  else add('Payload (Raspberry)', 'OBC liga o payload (comando UART)', 'pending', 'acontece quando o TT&C manda o bit Missão (0x01 ou 0x09)', '');
+  if (pl.blocks) add('Payload (Raspberry)', 'Blocos do Pi chegando (TX0 → PB11)', 'ok', `${pl.blocks} blocos de 4080 B; último há ${secs(pl.lastBlockAt)} s`);
+  else if (pl.semDados) add('Payload (Raspberry)', 'Blocos do Pi chegando (TX0 → PB11)', 'fail', `missão ligada e nada chegou em ${pl.semDados.s} s`,
+    'No Pi: o hermes-simples só começa a missão se o SDR e o dump1090 subirem (journalctl -u hermes-simples). Confira os fios: PB10 (D6) → pino 10 (RX0) leva o LIGAR, pino 8 (TX0) → PB11 (CN10-18) traz os blocos, e o GND.');
+  else add('Payload (Raspberry)', 'Blocos do Pi chegando (TX0 → PB11)', 'pending', 'o Pi só manda com a missão ligada (um bloco a cada 5 s)', '');
+  if (pl.blocks) add('Payload (Raspberry)', 'Registros íntegros', pl.descartadosTotal ? 'warn' : 'ok',
+    pl.descartadosTotal ? `${pl.descartadosTotal} registros implausíveis descartados (ruído na UART?)` : 'nenhum registro implausível');
+  if (pl.downlinks) add('Payload (Raspberry)', 'Aviões repassados ao TT&C', 'ok', `${pl.downlinks} quadros 'P' (último com ${pl.lastDownlink.n} aviões, ${pl.lastDownlink.bytes} B)`);
+  else if (pl.blocks) add('Payload (Raspberry)', 'Aviões repassados ao TT&C', 'pending', "um quadro 'P' a cada 5 s com a missão ligada", '');
+  if (pl.resyncs || pl.uartErros) add('Payload (Raspberry)', 'Enlace USART3 estável', 'warn', `${pl.resyncs} realinhamentos, ${pl.uartErros} erros de UART`);
 
   // Telemetria e sensores
   if (tm.count) add('Telemetria e sensores', 'Telemetria completa (85 B)', tm.partial ? 'warn' : 'ok', `${tm.count} quadros${tm.partial ? `, ${tm.partial} incompletos` : ''}`);

@@ -44,11 +44,25 @@ node bridge/server.mjs        # abre a COM18 e serve o painel em http://localhos
 Só precisa do Node (sem `npm install`). A COM18 não pode estar aberta em outro programa. Opções do bridge:
 `--stm COM18 --http 8780 --no-relay`.
 
+## Payload (Raspberry Pi Zero W, HERMES Simples)
+
+| Nucleo | | Raspberry Pi | Sinal |
+|---|---|---|---|
+| **D6 · PB10** (USART3_TX, CN10 pino 25) | → | pino 10 (GPIO15, RX0) | LIGAR `A5 5A 01 FE` (repete a cada 2 s) / DESLIGAR `A5 5A 00 FF` |
+| **PB11** (USART3_RX, CN10 pino 18) | ← | pino 8 (GPIO14, TX0) | 20 × 204 B = 4080 B a cada 5 s |
+| **GND** (CN10 pino 20) | — | pino 6 | referência |
+
+Nenhum GPIO é usado. O OBC recebe os blocos por DMA (`hermes_adsb.c`, da equipe do payload), descarta
+registros implausíveis (o bloco não tem CRC) e manda ao TT&C um quadro `'P'` a cada 5 s com 28 B por avião
+(`payload_downlink.c`). O Pi precisa do SDR no USB dele (porta "USB" do meio, com OTG) e de fonte própria.
+Diagrama completo: `web/montagem.html` (ou http://localhost:8780/montagem.html com o bridge rodando).
+
 ## Variante de bancada do firmware (`stm32/patch_bancada.py`)
 
 Os patches valem só para a cópia de build; o repositório não muda.
 
 1. A telemetria (`'T'` + 85 B) também sai pela USART2, para o PC ver (o `uart.py` da branch já esperava isso).
+   Com `-DBANCADA_ESPELHO=1`, os quadros `'P'` dos aviões também.
 2. `debugPrintf` usa o `uartMutex`, para uma linha de debug não cair no meio de um quadro de telemetria.
 3. Cada byte recebido gera `rx tc=0xNN` no debug (o original só imprime quando algo muda).
 
@@ -59,6 +73,7 @@ Os patches valem só para a cópia de build; o repositório não muda.
   telemetria e do próximo comando; tasks do FreeRTOS.
 - **Comandos do TT&C:** o roteiro do ESP32. Para cada comando recebido, o bridge simula o `handleTelecommand()`
   a partir do estado atual e confere se o debug mostrou exatamente o esperado.
+- **Payload:** caminho Pi → OBC → TT&C com o status de cada trecho, tabela e mapa dos aviões do último `'P'`.
 - **Telemetria:** relógio, temperatura, pressão, umidade e antena, com tendência; todos os 38 campos do pacote.
 - **Ligações e pinos:** diagrama da bancada e tabela de pinos com status ao vivo.
 - **Histórico e log:** linha do tempo em português e a USART2 crua.

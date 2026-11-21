@@ -28,6 +28,8 @@
 #include "customTypes.h"
 #include "BME280.h"
 #include "DS3231.h"
+#include "hermes_adsb.h"
+#include "payload_downlink.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -104,7 +106,7 @@ const osThreadAttr_t detumblingTask_attributes = {
 osThreadId_t missionTaskHandle;
 const osThreadAttr_t missionTask_attributes = {
   .name = "missionTask",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for eventQueue */
@@ -292,6 +294,8 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
+  /* Payload HERMES: recebe 20 x 204 = 4080 B a cada 5 s por DMA na USART3 (PB11). */
+  HermesAdsb_Init(&huart3, NULL);
 
   /* USER CODE END 2 */
 
@@ -629,6 +633,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         (void)osThreadFlagsSet(receiveTaskHandle, USART1_RX_FLAG);
     }
 #endif
+    else if (huart->Instance == HERMES_ADSB_UART_INSTANCE)
+    {
+        HermesAdsb_RxCpltCallback(huart);
+    }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
@@ -662,6 +670,41 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
         }
     }
 #endif
+    else if (huart->Instance == HERMES_ADSB_UART_INSTANCE)
+    {
+        HermesAdsb_ErrorCallback(huart);
+    }
+}
+
+/* ---------------------------------------------------------------- payload ---
+ * O Raspberry (HERMES Simples) é ligado e desligado por comando na própria UART
+ * (USART3 TX = PB10 -> RX0, pino 10 do Pi), 4 bytes: A5 5A cmd ~cmd, com
+ * cmd = 01 LIGAR e 00 DESLIGAR. Enquanto a missão estiver pedida, o LIGAR é
+ * reenviado a cada 2 s: se o Pi reiniciar ou perder o comando, ele volta sozinho.
+ * A confirmação são os blocos de 4080 B chegando (não há ACK). */
+#define PLD_CMD_LIGAR        0x01U
+#define PLD_CMD_DESLIGAR     0x00U
+#define PLD_CMD_REPETE_MS    2000U    /* reenvio do LIGAR durante a missão */
+#define PLD_CMD_OFF_VEZES    3U       /* DESLIGAR vai 3 vezes, 100 ms entre elas */
+#define PLD_DOWNLINK_MS      5000U    /* um quadro 'P' ao TT&C a cada 5 s */
+#define PLD_SEM_DADOS_MS     20000U   /* aviso: missão ligada e nenhum bloco (o dump1090 leva até 15 s) */
+
+static void payloadComando(uint8_t cmd)
+{
+	uint8_t q[4] = { 0xA5U, 0x5AU, cmd, (uint8_t)(cmd ^ 0xFFU) };
+	(void)HAL_UART_Transmit(&huart3, q, sizeof(q), 50);
+}
+
+/* Manda o quadro 'P' ao TT&C (USART1), sob o mesmo mutex da telemetria. */
+static void payloadEnviaDownlink(const uint8_t *frame, size_t len)
+{
+	osMutexAcquire(uartMutexHandle, osWaitForever);
+	HAL_UART_Transmit(&huart1, (uint8_t *)frame, (uint16_t)len, 2000);
+#if defined(BANCADA_ESPELHO) && BANCADA_ESPELHO
+	/* Bancada: espelha o quadro na USART2 (ST-Link) para o PC ver os aviões. */
+	HAL_UART_Transmit(&huart2, (uint8_t *)frame, (uint16_t)len, 200);
+#endif
+	osMutexRelease(uartMutexHandle);
 }
 /* USER CODE END 4 */
 
@@ -681,8 +724,8 @@ void StartMainTask(void *argument)
 	bool missionActive = false;
 
 	osTimerStart(HkTickTimerHandle, pdMS_TO_TICKS(60000));
-	debugPrintf("[%08lu] main ready, mode=%u\r\n",
-			osKernelGetTickCount(), (unsigned int)mode);
+	debugPrintf("[%08lu] main ready, mode=%u heap_livre=%u\r\n",
+			osKernelGetTickCount(), (unsigned int)mode, (unsigned int)xPortGetFreeHeapSize());
 
 	/* Infinite loop */
 	for(;;)
@@ -949,16 +992,113 @@ void StartDetumblingTask(void *argument)
 void StartMissionTask(void *argument)
 {
   /* USER CODE BEGIN StartMissionTask */
-  for(;;)
-  {
-	  osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, osWaitForever);
-	  debugPrintf("[%08lu] mission task ran\r\n", osKernelGetTickCount());
-	  Event_t evt = {
-		  .type = EVT_MISSION_DONE,
-		  .timestamp = osKernelGetTickCount()
-	  };
-	  osMessageQueuePut(eventQueueHandle, &evt, 0U, osWaitForever);
-  }
+	/* Gerente do payload HERMES: liga/desliga o Pi por comando na UART, recebe os blocos de
+	 * 4080 B (DMA na USART3), valida e repassa ao TT&C a cada 5 s.
+	 * A missão termina quando o solo manda um TC sem o bit Mission (TASK_STOP_FLAG). */
+	static Plane_t blocos[HERMES_NUM_PLANES];
+	static PlaneDown_t avioes[PLD_DOWN_MAX_PLANES];
+	static uint8_t quadro[PLD_DOWN_FRAME_MAX];
+	size_t nAvioes = 0U;
+	bool temDados = false;
+	bool missao = false;
+	bool avisouSemDados = false;
+	uint32_t ultimoDownlink = 0U;
+	uint32_t ultimoComando = 0U;
+	uint32_t ultimoBloco = 0U;
+	uint32_t inicioMissao = 0U;
+	uint32_t resyncsVistos = 0U;
+	uint32_t errosVistos = 0U;
+
+	HermesAdsb_SetNotifyTask(osThreadGetId());
+
+	for (;;)
+	{
+		uint32_t flags = osThreadFlagsWait(TASK_START_FLAG | TASK_STOP_FLAG | HERMES_ADSB_FLAG,
+				osFlagsWaitAny, pdMS_TO_TICKS(HERMES_ADSB_TASK_POLL_MS));
+		uint32_t agora = osKernelGetTickCount();
+
+		if ((flags & osFlagsError) == 0U)
+		{
+			if ((flags & TASK_STOP_FLAG) != 0U)
+			{
+				missao = false;
+				for (uint32_t k = 0U; k < PLD_CMD_OFF_VEZES; k++)
+				{
+					payloadComando(PLD_CMD_DESLIGAR);
+					osDelay(pdMS_TO_TICKS(100U));
+				}
+				debugPrintf("[%08lu] pld desligar (UART cmd 00 x%u)\r\n", osKernelGetTickCount(),
+						(unsigned int)PLD_CMD_OFF_VEZES);
+			}
+			if ((flags & TASK_START_FLAG) != 0U)
+			{
+				missao = true;
+				temDados = false;
+				avisouSemDados = false;
+				inicioMissao = agora;
+				ultimoDownlink = agora;
+				ultimoComando = agora;
+				payloadComando(PLD_CMD_LIGAR);
+				debugPrintf("[%08lu] pld ligar (UART cmd 01, repete a cada %u s)\r\n", agora,
+						(unsigned int)(PLD_CMD_REPETE_MS / 1000U));
+			}
+		}
+
+		if (missao && (agora - ultimoComando) >= PLD_CMD_REPETE_MS)
+		{
+			payloadComando(PLD_CMD_LIGAR);   /* mantém a missão, como um nível */
+			ultimoComando = agora;
+		}
+
+		const HermesAdsbStats_t *st = HermesAdsb_Stats();
+		while (HermesAdsb_Take(blocos))
+		{
+			PldCompactStats_t cs;
+			nAvioes = pld_compact(blocos, avioes, &cs);
+			temDados = true;
+			ultimoBloco = agora;
+			avisouSemDados = false;
+			debugPrintf("[%08lu] pld bloco %lu: %u avioes, %u vazios, %u descartados\r\n",
+					osKernelGetTickCount(), (unsigned long)st->buffers,
+					(unsigned int)cs.validos, (unsigned int)cs.vazios, (unsigned int)cs.descartados);
+		}
+
+		HermesAdsb_CheckTimeout(agora);
+		if (st->resyncs != resyncsVistos)
+		{
+			resyncsVistos = st->resyncs;
+			if (missao)
+			{
+				debugPrintf("[%08lu] pld resync %lu (nenhum bloco em %u s)\r\n", agora,
+						(unsigned long)resyncsVistos, (unsigned int)(HERMES_ADSB_TIMEOUT_MS / 1000U));
+			}
+		}
+		if (st->dma_errors != errosVistos)
+		{
+			errosVistos = st->dma_errors;
+			debugPrintf("[%08lu] pld erro uart %lu\r\n", agora, (unsigned long)errosVistos);
+		}
+
+		if (missao && !avisouSemDados
+				&& (agora - (temDados ? ultimoBloco : inicioMissao)) >= PLD_SEM_DADOS_MS)
+		{
+			avisouSemDados = true;
+			debugPrintf("[%08lu] pld sem dados ha %lu s\r\n", agora,
+					(unsigned long)((agora - (temDados ? ultimoBloco : inicioMissao)) / 1000U));
+		}
+
+		if (missao && temDados && (agora - ultimoDownlink) >= PLD_DOWNLINK_MS)
+		{
+			size_t len = pld_build_frame(avioes, nAvioes, quadro, sizeof(quadro));
+			if (len > 0U)
+			{
+				payloadEnviaDownlink(quadro, len);
+				debugPrintf("[%08lu] ttc tx P n=%u (%u B)\r\n", osKernelGetTickCount(),
+						(unsigned int)nAvioes, (unsigned int)len);
+			}
+			ultimoDownlink = agora;
+		}
+	}
   /* USER CODE END StartMissionTask */
 }
 

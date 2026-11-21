@@ -24,6 +24,7 @@
   <nav class="tabs" role="tablist" id="tabs">
     <a href="#visao" role="tab" data-tab="visao">Visão geral</a>
     <a href="#ttc" role="tab" data-tab="ttc">Comandos do TT&amp;C <span class="badge" id="b-ttc"></span></a>
+    <a href="#payload" role="tab" data-tab="payload">Payload <span class="badge" id="b-pld"></span></a>
     <a href="#telemetria" role="tab" data-tab="telemetria">Telemetria <span class="badge" id="b-tm"></span></a>
     <a href="#ligacoes" role="tab" data-tab="ligacoes">Ligações e pinos <span class="badge" id="b-pins"></span></a>
     <a href="#log" role="tab" data-tab="log">Histórico e log</a>
@@ -71,6 +72,34 @@
       </article>
     </section>
 
+    <!-- ============================================================ PAYLOAD -->
+    <section class="tab" id="tab-payload" hidden>
+      <article class="card">
+        <header class="card-h"><h2>Caminho dos dados ADS-B</h2><span class="hint">Raspberry Pi (HERMES Simples) → OBC → TT&amp;C</span></header>
+        <div class="flow" id="pld-flow"></div>
+      </article>
+      <div class="cols-2">
+        <article class="card">
+          <header class="card-h"><h2>Aviões no último quadro 'P'</h2><span class="hint" id="pld-meta"></span></header>
+          <div class="table-wrap"><table class="planes" id="pld-table"></table></div>
+        </article>
+        <article class="card">
+          <header class="card-h"><h2>Mapa</h2><span class="hint">posição e rastro de cada avião (lat/lon, sem fundo)</span></header>
+          <svg class="map" id="pld-map" viewBox="0 0 420 300" role="img" aria-label="Mapa das posições dos aviões"></svg>
+        </article>
+      </div>
+      <article class="card">
+        <header class="card-h"><h2>Como o payload funciona nesta integração</h2></header>
+        <ul class="tips">
+          <li><b>Ligar:</b> o TT&amp;C manda o bit Missão; o OBC manda <code>A5 5A 01 FE</code> pela USART3 (<b>PB10 → pino 10</b>, RX0 do Pi) e repete a cada 2 s enquanto a missão estiver pedida. O Pi liga o SDR e o dump1090 (até ~15 s).</li>
+          <li><b>Dados:</b> o Pi manda 20 aviões × 204 B = <b>4080 B a cada 5 s</b> pela UART (pino 8, TX0) para o <b>PB11</b> (USART3, 115200), recebidos por DMA.</li>
+          <li><b>Validação:</b> o bloco não tem CRC; o OBC descarta registros com ICAO fora de 24 bits ou posição impossível.</li>
+          <li><b>Downlink:</b> a cada 5 s o OBC manda ao TT&amp;C um quadro <b>'P'</b> com 28 B por avião (ICAO, lat, lon, altitude, velocidade, rumo, tempo da posição).</li>
+          <li><b>Desligar:</b> TC sem o bit Missão; o OBC manda <code>A5 5A 00 FF</code> três vezes. Nenhum GPIO é usado.</li>
+        </ul>
+      </article>
+    </section>
+
     <!-- ============================================================ TELEMETRIA -->
     <section class="tab" id="tab-telemetria" hidden>
       <article class="card">
@@ -87,7 +116,7 @@
     <!-- ============================================================ LIGAÇÕES -->
     <section class="tab" id="tab-ligacoes" hidden>
       <article class="card">
-        <header class="card-h"><h2>Diagrama da bancada</h2><span class="hint">TX de um lado sempre vai no RX do outro</span></header>
+        <header class="card-h"><h2>Diagrama da bancada</h2><span class="hint">TX de um lado sempre vai no RX do outro · <a href="/montagem.html" target="_blank">montagem completa com o Raspberry →</a></span></header>
         <svg class="wiring" id="wiring" viewBox="0 0 900 360" role="img" aria-label="Diagrama de ligação entre Nucleo, ESP32 e sensores"></svg>
       </article>
       <article class="card">

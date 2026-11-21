@@ -4,6 +4,7 @@
 #   ./build_flash.sh                       # variante de bancada (padrão): compila e grava
 #   ./build_flash.sh --original            # código da branch sem nenhuma alteração
 #   ./build_flash.sh --no-flash            # só compila
+#   ./build_flash.sh --local               # compila o working tree em vez da branch remota (REF)
 #
 # A variante de bancada (patch_bancada.py) espelha telemetria e debug na USART2 (ST-Link) para o PC
 # acompanhar tudo; os TCs chegam pela USART1 (ESP32 simulando o TT&C). Os patches valem só para a cópia de build.
@@ -21,18 +22,27 @@ SRC="$OUT/src"
 
 VARIANT=bancada
 FLASH=1
+LOCAL=0
 for a in "$@"; do
   case "$a" in
     --original) VARIANT=original ;;
     --no-flash) FLASH=0 ;;
+    --local) LOCAL=1 ;;
     *) echo "opção desconhecida: $a"; exit 1 ;;
   esac
 done
 
 rm -rf "$SRC" && mkdir -p "$SRC"
-git -C "$REPO" archive "$REF" "$PROJ" | tar -x -C "$SRC"
+if [[ "$LOCAL" == 1 ]]; then
+  # working tree, com alterações ainda não commitadas
+  mkdir -p "$SRC/$PROJ" && (cd "$REPO/$PROJ" && tar -c --exclude=build --exclude=.git . ) | tar -x -C "$SRC/$PROJ"
+  COMMIT="$(git -C "$REPO" rev-parse --short HEAD)-local"
+  REF="working tree"
+else
+  git -C "$REPO" archive "$REF" "$PROJ" | tar -x -C "$SRC"
+  COMMIT="$(git -C "$REPO" rev-parse --short "$REF")"
+fi
 P="$SRC/$PROJ"
-COMMIT="$(git -C "$REPO" rev-parse --short "$REF")"
 echo "[build] $REF ($COMMIT), variante $VARIANT -> $OUT"
 if [[ "$VARIANT" == bancada ]]; then python3 "$HERE/patch_bancada.py" "$P"; fi
 
@@ -48,7 +58,10 @@ FILES=$(ls "$P"/Core/Src/*.c "$P"/Drivers/STM32L4xx_HAL_Driver/Src/*.c \
            "$P"/Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c | grep -v _template)
 
 # shellcheck disable=SC2086
-arm-none-eabi-gcc $CPU -DUSE_HAL_DRIVER -DSTM32L476xx -std=gnu11 -Og -g3 \
+DEFS="-DUSE_HAL_DRIVER -DSTM32L476xx"
+if [[ "$VARIANT" == bancada ]]; then DEFS="$DEFS -DBANCADA_ESPELHO=1"; fi   # quadros 'P' também na USART2
+# shellcheck disable=SC2086
+arm-none-eabi-gcc $CPU $DEFS -std=gnu11 -Og -g3 \
   -ffunction-sections -fdata-sections $INC $FILES "$P/Core/Startup/startup_stm32l476rgtx.s" \
   -T"$P/STM32L476RGTX_FLASH.ld" --specs=nano.specs --specs=nosys.specs \
   -Wl,--gc-sections -Wl,-Map="$OUT/stateMachine.map" \

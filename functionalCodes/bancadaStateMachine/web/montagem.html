@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Montagem da bancada: OBC + TT&C + Payload</title>
+<style>
+  :root { color-scheme: dark; --bg:#0f1012; --s1:#17181b; --s2:#1f2024; --line:#2d2f35; --t1:#f0efec; --t2:#c3c2b7; --t3:#8c8b83;
+    --sans:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; --mono:ui-monospace,Consolas,monospace; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:radial-gradient(1200px 500px at 15% -10%, #16233a 0%, transparent 60%), var(--bg); color:var(--t1); font:15px/1.5 var(--sans); }
+  main { max-width:1320px; margin:0 auto; padding:24px 28px 40px; display:flex; flex-direction:column; gap:18px; }
+  h1 { font-size:22px; margin:0; } h2 { font-size:16px; margin:0 0 14px; }
+  .sub { color:var(--t3); font-size:13.5px; margin-top:2px; }
+  .card { background:var(--s1); border:1px solid var(--line); border-radius:14px; padding:20px 22px; }
+  svg { width:100%; height:auto; display:block; }
+  .board { fill:#1f2024; stroke:#3a3d44; stroke-width:1.5; }
+  .bname { fill:var(--t1); font:700 17px var(--sans); } .bsub { fill:var(--t3); font:12.5px var(--sans); }
+  .pin { fill:#0f1012; stroke:#6b6e76; stroke-width:1.6; }
+  .pl { fill:var(--t1); font:700 13px var(--mono); } .ps { fill:var(--t3); font:11.5px var(--mono); }
+  .wire { fill:none; stroke-width:4; stroke-linecap:round; }
+  .wl { font:600 12.5px var(--sans); }
+  .hdr rect { stroke:#0f1012; stroke-width:1; }
+  .note { fill:var(--t3); font:12px var(--sans); }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--t3); padding:8px 10px; border-bottom:1px solid var(--line); }
+  td { padding:10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  td small { display:block; font:12px var(--mono); color:var(--t3); }
+  tr.sec td { background:var(--s2); font-size:12px; text-transform:uppercase; letter-spacing:.07em; color:var(--t3); font-weight:600; padding:7px 10px; }
+  .sw { display:inline-block; width:24px; height:5px; border-radius:3px; vertical-align:middle; margin-right:8px; }
+  ul { margin:0; padding-left:20px; color:var(--t2); display:grid; gap:7px; } b { color:var(--t1); }
+  code { font-family:var(--mono); background:var(--s2); padding:1px 6px; border-radius:5px; }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Montagem da bancada: OBC + TT&amp;C + Payload</h1>
+    <div class="sub">NUCLEO-L476RG (OBC) · ESP32 simulando o TT&amp;C na USART1 · Raspberry Pi Zero W (payload HERMES Simples) só na USART3 · todos os sinais em 3,3 V</div>
+  </div>
+
+  <section class="card">
+    <h2>Diagrama de ligação</h2>
+    <svg viewBox="0 0 1280 790" role="img" aria-label="Diagrama de ligação entre ESP32, Nucleo e Raspberry Pi Zero W">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker>
+      </defs>
+
+      <!-- PC -->
+      <rect class="board" x="545" y="10" width="190" height="52" rx="10"/>
+      <text class="bname" x="640" y="34" text-anchor="middle" style="font-size:14px">PC</text>
+      <text class="bsub" x="640" y="51" text-anchor="middle">COM18 · painel da bancada</text>
+      <path class="wire" d="M640 62 L640 98" stroke="#c3c2b7" stroke-dasharray="6 5"/>
+      <text class="wl" x="652" y="86" fill="#c3c2b7">USB do ST-Link (USART2, debug)</text>
+
+      <!-- ESP32 -->
+      <rect class="board" x="40" y="130" width="250" height="290" rx="14"/>
+      <text class="bname" x="62" y="164">ESP32</text>
+      <text class="bsub" x="62" y="184">TT&amp;C simulado (esp32_ttc_mock)</text>
+      <text class="bsub" x="62" y="202">9600 8N1</text>
+      <g>
+        <circle class="pin" cx="290" cy="240" r="7"/><text class="pl" x="274" y="236" text-anchor="end">GPIO16</text><text class="ps" x="274" y="252" text-anchor="end">RX2</text>
+        <circle class="pin" cx="290" cy="290" r="7"/><text class="pl" x="274" y="286" text-anchor="end">GPIO17</text><text class="ps" x="274" y="302" text-anchor="end">TX2</text>
+        <circle class="pin" cx="290" cy="340" r="7"/><text class="pl" x="274" y="344" text-anchor="end">GND</text>
+        <circle class="pin" cx="290" cy="385" r="7"/><text class="pl" x="274" y="381" text-anchor="end">VIN</text><text class="ps" x="274" y="397" text-anchor="end">5V</text>
+      </g>
+
+      <!-- NUCLEO -->
+      <rect class="board" x="470" y="100" width="340" height="580" rx="16"/>
+      <text class="bname" x="640" y="140" text-anchor="middle">NUCLEO-L476RG</text>
+      <text class="bsub" x="640" y="160" text-anchor="middle">OBC · máquina de estados</text>
+      <text class="bsub" x="490" y="212">USART1 · TT&amp;C</text>
+      <circle class="pin" cx="470" cy="240" r="7"/><text class="pl" x="486" y="236">D8</text><text class="ps" x="486" y="252">PA9 · TX1</text>
+      <circle class="pin" cx="470" cy="290" r="7"/><text class="pl" x="486" y="286">D2</text><text class="ps" x="486" y="302">PA10 · RX1</text>
+      <circle class="pin" cx="470" cy="340" r="7"/><text class="pl" x="486" y="344">GND</text>
+      <circle class="pin" cx="470" cy="385" r="7"/><text class="pl" x="486" y="381">5V</text><text class="ps" x="486" y="397">CN6 pino 5</text>
+
+      <text class="bsub" x="790" y="452" text-anchor="end">USART3 · payload (igual à PCB)</text>
+      <circle class="pin" cx="810" cy="480" r="7"/><text class="pl" x="794" y="476" text-anchor="end">D6 · PB10</text><text class="ps" x="794" y="492" text-anchor="end">TX3 · CN10 pino 25</text>
+      <circle class="pin" cx="810" cy="530" r="7"/><text class="pl" x="794" y="526" text-anchor="end">PB11</text><text class="ps" x="794" y="542" text-anchor="end">RX3 · CN10 pino 18</text>
+      <circle class="pin" cx="810" cy="580" r="7"/><text class="pl" x="794" y="584" text-anchor="end">GND</text><text class="ps" x="794" y="598" text-anchor="end">CN10 pino 20</text>
+
+      <!-- fios TT&C -->
+      <path class="wire" d="M462 240 L298 240" stroke="#3987e5" marker-end="url(#ar)"/>
+      <text class="wl" x="380" y="230" text-anchor="middle" fill="#3987e5">telemetria →</text>
+      <path class="wire" d="M298 290 L462 290" stroke="#9085e9" marker-end="url(#ar)"/>
+      <text class="wl" x="380" y="280" text-anchor="middle" fill="#9085e9">← telecomandos</text>
+      <path class="wire" d="M298 340 L462 340" stroke="#8c8b83"/>
+      <text class="wl" x="380" y="330" text-anchor="middle" fill="#8c8b83">GND comum</text>
+      <path class="wire" d="M462 385 L298 385" stroke="#e66767"/>
+      <text class="wl" x="380" y="375" text-anchor="middle" fill="#e66767">5V → VIN</text>
+
+      <!-- RASPBERRY PI ZERO W -->
+      <rect class="board" x="980" y="320" width="270" height="360" rx="14"/>
+      <text class="bname" x="1230" y="350" text-anchor="end">Raspberry Pi Zero W</text>
+      <text class="bsub" x="1230" y="368" text-anchor="end">payload ADS-B · /dev/serial0 · 115200</text>
+      <circle class="pin" cx="980" cy="480" r="7"/><text class="pl" x="996" y="476">pino 10</text><text class="ps" x="996" y="492">GPIO15 · RXD (RX0)</text>
+      <circle class="pin" cx="980" cy="530" r="7"/><text class="pl" x="996" y="526">pino 8</text><text class="ps" x="996" y="542">GPIO14 · TXD (TX0)</text>
+      <circle class="pin" cx="980" cy="580" r="7"/><text class="pl" x="996" y="584">pino 6</text><text class="ps" x="996" y="598">GND</text>
+
+      <!-- header de 40 pinos, vista de cima: linha da borda = pinos pares -->
+      <g class="hdr" transform="translate(1000,405)">
+        <text class="ps" x="0" y="-22">header de 40 pinos (vista de cima)</text>
+        <rect x="0" y="0" width="230" height="28" rx="4" fill="#0b0b0c" stroke="#3a3d44"/>
+        <!-- pinos pares (borda): 2,4,6,8,10,... ; ímpares embaixo -->
+        <g id="pins"></g>
+      </g>
+
+      <!-- fios payload -->
+      <path class="wire" d="M818 480 L972 480" stroke="#eb6834" marker-end="url(#ar)"/>
+      <text class="wl" x="895" y="470" text-anchor="middle" fill="#eb6834">LIGAR / DESLIGAR →</text>
+      <path class="wire" d="M972 530 L818 530" stroke="#1baf7a" marker-end="url(#ar)"/>
+      <text class="wl" x="895" y="520" text-anchor="middle" fill="#1baf7a">← 4080 B a cada 5 s</text>
+      <path class="wire" d="M818 580 L972 580" stroke="#8c8b83"/>
+      <text class="wl" x="895" y="570" text-anchor="middle" fill="#8c8b83">GND comum</text>
+
+      <!-- alimentação e SDR do Pi -->
+      <rect class="board" x="930" y="712" width="160" height="62" rx="10"/>
+      <text class="pl" x="1010" y="737" text-anchor="middle">Fonte 5 V</text><text class="ps" x="1010" y="754" text-anchor="middle">≥ 2,5 A</text>
+      <rect class="board" x="1110" y="712" width="160" height="62" rx="10"/>
+      <text class="pl" x="1190" y="737" text-anchor="middle">RTL-SDR</text><text class="ps" x="1190" y="754" text-anchor="middle">+ antena 1090 MHz</text>
+      <path class="wire" d="M1010 712 L1010 680" stroke="#e66767"/>
+      <text class="wl" x="1000" y="702" text-anchor="end" fill="#e66767">micro-USB PWR IN</text>
+      <path class="wire" d="M1190 712 L1190 680" stroke="#c3c2b7"/>
+      <text class="wl" x="1180" y="702" text-anchor="end" fill="#c3c2b7">USB (OTG)</text>
+
+      <text class="note" x="40" y="740">O Raspberry e o SDR não podem ser alimentados pelo 5V do Nucleo (o SDR consome ~300 mA e o Pi até ~350 mA em pico).</text>
+      <text class="note" x="40" y="760">TX de um lado sempre vai no RX do outro. Ligue os GNDs antes dos sinais.</text>
+    </svg>
+  </section>
+
+  <section class="card">
+    <h2>Tabela de ligações</h2>
+    <table>
+      <tr><th>Nucleo-L476RG</th><th></th><th>Liga em</th><th>Sinal</th></tr>
+      <tr class="sec"><td colspan="4">TT&amp;C: USART1, 9600 8N1</td></tr>
+      <tr><td><b>D8</b><small>PA9 · USART1_TX</small></td><td>→</td><td><b>GPIO16</b><small>RX2 do ESP32</small></td><td><span class="sw" style="background:#3987e5"></span>telemetria</td></tr>
+      <tr><td><b>D2</b><small>PA10 · USART1_RX</small></td><td>←</td><td><b>GPIO17</b><small>TX2 do ESP32</small></td><td><span class="sw" style="background:#9085e9"></span>telecomandos</td></tr>
+      <tr><td><b>GND</b></td><td>—</td><td><b>GND</b><small>ESP32</small></td><td><span class="sw" style="background:#8c8b83"></span>referência</td></tr>
+      <tr><td><b>5V</b><small>CN6 pino 5</small></td><td>→</td><td><b>VIN</b><small>ESP32</small></td><td><span class="sw" style="background:#e66767"></span>alimentação do ESP32</td></tr>
+      <tr class="sec"><td colspan="4">Payload: USART3, 115200 8N1</td></tr>
+      <tr><td><b>PB11</b><small>USART3_RX · CN10 pino 18</small></td><td>←</td><td><b>pino 8</b><small>GPIO14 · TXD (TX0) do Pi</small></td><td><span class="sw" style="background:#1baf7a"></span>aviões: 20 × 204 B = 4080 B a cada 5 s</td></tr>
+      <tr><td><b>D6 · PB10</b><small>USART3_TX · CN10 pino 25</small></td><td>→</td><td><b>pino 10</b><small>GPIO15 · RXD (RX0) do Pi</small></td><td><span class="sw" style="background:#eb6834"></span>comandos LIGAR <code>A5 5A 01 FE</code> / DESLIGAR <code>A5 5A 00 FF</code></td></tr>
+      <tr><td><b>GND</b><small>CN10 pino 20</small></td><td>—</td><td><b>pino 6</b><small>GND do Pi</small></td><td><span class="sw" style="background:#8c8b83"></span>referência</td></tr>
+      <tr class="sec"><td colspan="4">Raspberry Pi: alimentação e SDR</td></tr>
+      <tr><td colspan="2">Fonte 5 V ≥ 2,5 A</td><td><b>PWR IN</b><small>micro-USB da borda</small></td><td>alimentação do Pi</td></tr>
+      <tr><td colspan="2">RTL-SDR + antena 1090 MHz</td><td><b>USB</b><small>micro-USB do meio, com adaptador OTG</small></td><td>receptor ADS-B</td></tr>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Antes de ligar</h2>
+    <ul>
+      <li><b>Só 3,3 V nos sinais.</b> Nucleo, ESP32 e Pi usam 3,3 V. Nunca ligue a UART do Pi em níveis RS-232 ou 5 V.</li>
+      <li><b>UART do Pi:</b> em <code>/boot/config.txt</code> (ou <code>/boot/firmware/config.txt</code>), adicione <code>enable_uart=1</code> e <code>dtoverlay=disable-bt</code>, para a UART completa (PL011) ficar nos GPIO14/15. Desative o console serial (<code>sudo raspi-config</code> → Interface → Serial: login shell <b>não</b>, hardware <b>sim</b>) e reinicie.</li>
+      <li><b>Firmware do OBC:</b> a branch <code>payload_integration</code> põe a USART3 em PB10/PB11 (como na PCB), recebe os blocos por DMA e manda LIGAR/DESLIGAR pela própria UART (sem GPIO).</li>
+      <li><b>PB11 no Nucleo</b> só existe no conector morpho (CN10 pino 18). O GND do CN10 pino 20 fica logo ao lado.</li>
+      <li><b>Aquecedores e DS18B20</b> (GPIO 12/13 e 4 do Pi) não fazem parte desta montagem. Ligue depois, com o fusível de 0,5 A no ramo de 13,8 V.</li>
+    </ul>
+  </section>
+</main>
+<script>
+  // Header de 40 pinos do Pi: destaca 6 (GND), 8 (TXD) e 10 (RXD)
+  const g = document.getElementById('pins');
+  const hi = { 6: ['#8c8b83', 'GND'], 8: ['#1baf7a', 'TX'], 10: ['#eb6834', 'RX'] };
+  let svg = '';
+  for (let k = 0; k < 20; k++) {
+    const x = 6 + k * 11.2;
+    for (const [pin, y] of [[2 * k + 2, 4], [2 * k + 1, 16]]) {
+      const h = hi[pin];
+      svg += `<rect x="${x}" y="${y}" width="8" height="8" rx="1.5" fill="${h ? h[0] : '#4a4d55'}"/>`;
+      if (h) svg += `<text x="${x + 4}" y="-8" text-anchor="middle" font-size="9" font-family="ui-monospace,Consolas,monospace" fill="${h[0]}">${pin}</text>`;
+    }
+  }
+  svg += `<text x="4" y="40" font-size="9" fill="#8c8b83" font-family="ui-monospace,Consolas,monospace">pino 1 (canto)</text>`;
+  g.innerHTML = svg;
+</script>
+</body>
+</html>

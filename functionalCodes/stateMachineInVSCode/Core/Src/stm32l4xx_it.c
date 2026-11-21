@@ -22,6 +22,7 @@
 #include "stm32l4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "hermes_adsb.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,6 +60,7 @@ extern UART_HandleTypeDef huart1;
 extern TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN EV */
+extern UART_HandleTypeDef HERMES_ADSB_UART_HANDLE;
 extern UART_HandleTypeDef huart2;
 
 /* USER CODE END EV */
@@ -190,6 +192,17 @@ void TIM6_DAC_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+/* Payload HERMES: USART3 (erros) e DMA1 Channel3 (USART3_RX, bloco de 4080 B). */
+void USART3_IRQHandler(void)
+{
+  HAL_UART_IRQHandler(&HERMES_ADSB_UART_HANDLE);
+}
+
+void DMA1_Channel3_IRQHandler(void)
+{
+  HermesAdsb_DmaIrqHandler();
+}
+
 #if TC_ON_USART2
 /* Kept here instead of enabling the interrupt in CubeMX; if it is ever enabled
  * there, delete this handler (CubeMX will generate its own). */

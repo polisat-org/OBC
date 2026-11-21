@@ -14,7 +14,7 @@ const check = (label) => S.checks.find((c) => c.label === label);
 let S = null;
 
 // --------------------------------------------------------------------- abas
-const TABS = ['visao', 'ttc', 'telemetria', 'ligacoes', 'log'];
+const TABS = ['visao', 'ttc', 'payload', 'telemetria', 'ligacoes', 'log'];
 function showTab() {
   const t = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'visao';
   for (const id of TABS) $(`tab-${id}`).hidden = id !== t;
@@ -46,6 +46,7 @@ function wires() {
     : nFail === sens.length ? 'nenhum sensor responde: confira SCL/SDA, alimentação e GND dos módulos'
       : nFail ? `${sens.filter((c) => c.status === 'fail').map((c) => c.label.replace('Sensor ', '').replace('Relógio ', '')).join(' e ')} não responde` : 'sensores respondendo';
   const tx = S.tasks.transmit.count;
+  const pl = S.payload;
   return [
     { sec: 'UART do TT&C (USART1, 9600 8N1): Nucleo ↔ ESP32' },
     { a: 'D2', aSub: 'PA10 · USART1_RX', dir: '←', b: 'GPIO17', bSub: 'TX2 do ESP32', sig: 'telecomandos', color: '#9085e9', st: tcSt,
@@ -56,6 +57,14 @@ function wires() {
       txt: tcs ? 'ok (os comandos estão chegando)' : 'obrigatório: sem GND comum nada passa' },
     { a: '5V', aSub: 'CN6 / header Arduino', dir: '→', b: 'VIN', bSub: '5V do ESP32', sig: 'alimentação', color: '#e66767', st: tcs ? 'ok' : 'info',
       txt: tcs ? 'ESP32 ligado (está mandando comandos)' : 'necessário quando o ESP32 não está no USB do PC' },
+    { sec: 'Payload (USART3, 115200 8N1 + 2 GPIOs): Nucleo ↔ Raspberry Pi Zero W' },
+    { a: 'PB11', aSub: 'USART3_RX · CN10 pino 18', dir: '←', b: 'pino 8', bSub: 'GPIO14 · TX0 do Pi', sig: 'blocos de 4080 B', color: '#1baf7a',
+      st: pl.blocks ? 'ok' : pl.semDados ? 'fail' : 'pending',
+      txt: pl.blocks ? `${pl.blocks} blocos recebidos, último ${ago(pl.lastBlockAt, n)}` : pl.semDados ? 'missão ligada e nenhum byte: Pi sem missão (sem SDR?), fio no pino errado ou sem GND' : 'o Pi só transmite com a missão ligada' },
+    { a: 'GND', aSub: 'CN10 pino 20', dir: '—', b: 'pino 6', bSub: 'GND do Pi', sig: 'referência', color: '#8c8b83', st: pl.blocks ? 'ok' : 'info', txt: pl.blocks ? 'ok' : 'obrigatório' },
+    { a: 'D6 · PB10', aSub: 'USART3_TX · CN10 pino 25', dir: '→', b: 'pino 10', bSub: 'GPIO15 · RX0 do Pi', sig: 'LIGAR / DESLIGAR', color: '#eb6834',
+      st: pl.blocks && pl.lastOnAt ? 'ok' : pl.semDados ? 'fail' : pl.gpio ? 'info' : 'pending',
+      txt: pl.blocks && pl.lastOnAt ? 'ok: o Pi começou a mandar depois do LIGAR' : pl.semDados ? 'LIGAR enviado e nada voltou: confira este fio, o pino 8 → PB11 e o GND' : pl.gpio === 'ligado' ? `LIGAR enviado ${ago(pl.lastOnAt, n)}; o 1º bloco leva até ~20 s (o dump1090 sobe primeiro)` : 'comando A5 5A 01 FE quando o TT&C manda o bit Missão' },
     { sec: 'Sensores (I2C1): Nucleo ↔ BME280 e DS3231' },
     { a: 'D15', aSub: 'PB8 · I2C1_SCL', dir: '→', b: 'SCL', bSub: 'BME280 e DS3231', sig: 'clock I2C', color: '#199e70', st: i2cSt, txt: i2cTxt },
     { a: 'D14', aSub: 'PB9 · I2C1_SDA', dir: '↔', b: 'SDA', bSub: 'BME280 e DS3231', sig: 'dados I2C', color: '#1baf7a', st: i2cSt, txt: i2cTxt },
@@ -80,6 +89,8 @@ function renderTop() {
   const bad = S.script.done.filter((d) => d.status === 'fail').length;
   badge('b-ttc', bad ? 'fail' : S.script.done.length ? 'ok' : '', bad || (S.script.done.length ? S.script.done.length : ''));
   badge('b-tm', S.telemetry.count ? 'ok' : '', S.telemetry.count || '');
+  const pl = S.payload;
+  badge('b-pld', pl.semDados && !pl.blocks ? 'fail' : pl.blocks ? 'ok' : '', pl.semDados && !pl.blocks ? '!' : pl.blocks || '');
 }
 function badge(id, cls, txt) { const e = $(id); e.className = `badge ${cls}`; e.textContent = txt; }
 
@@ -117,6 +128,11 @@ function renderSummary() {
   else if (sf.length) cards.push(['fail', 'Sensores', `${sf.length} sem resposta`, sf.map((c) => c.label.replace('Sensor ', '').replace('Relógio ', '')).join(' e ') + ' · ver pinos I2C', 'ligacoes']);
   else cards.push([sens.every((c) => c.status === 'ok') ? 'ok' : 'pending', 'Sensores', 'respondendo', 'DS3231 e BME280', 'telemetria']);
 
+  const pl = S.payload;
+  if (pl.blocks) cards.splice(2, 0, ['ok', 'Payload', `${pl.lastBlock.validos} aviões`, `${pl.blocks} blocos do Pi · ${pl.downlinks} repasses ao TT&C`, 'payload']);
+  else if (pl.semDados) cards.splice(2, 0, ['fail', 'Payload', 'sem dados', 'missão ligada e o Pi não mandou nada', 'payload']);
+  else if (pl.gpio === 'ligado') cards.splice(2, 0, ['pending', 'Payload', 'ligando', `LIGAR enviado ${ago(pl.lastOnAt, n)}; 1º bloco em até ~20 s`, 'payload']);
+  else cards.splice(2, 0, ['pending', 'Payload', 'desligado', 'liga com o bit Missão do TT&C', 'payload']);
   $('summary').innerHTML = cards.map(([s, k, big, d, tab]) => `<a class="sum ${s}" href="#${tab}">
     <div class="top-row"><span class="k">${k}</span>${st(s)}</div><div class="big">${esc(big)}</div><div class="d">${esc(d)}</div></a>`).join('');
 
@@ -307,6 +323,64 @@ function bindSpark() {
   });
 }
 
+// ----------------------------------------------------------------- payload
+function renderPayload() {
+  const pl = S.payload;
+  const n = S.now;
+  const node = (st_, title, sub, value, detail, fix) => `<div class="node ${st_}"><div class="nh"><div><div class="nt">${title}</div><div class="ns">${sub}</div></div>${st(st_)}</div>
+    <div class="nv">${value}</div><div class="nd">${detail}</div>${fix ? `<div class="nf">${fix}</div>` : ''}</div>`;
+  const piSt = pl.blocks ? 'ok' : pl.semDados ? 'fail' : pl.gpio === 'ligado' ? 'running' : 'pending';
+  const obcSt = pl.blocks ? (pl.descartadosTotal || pl.resyncs ? 'warn' : 'ok') : 'pending';
+  const ttcSt = pl.downlinks ? 'ok' : 'pending';
+  $('pld-flow').innerHTML = [
+    node(piSt === 'running' ? 'pending' : piSt, 'Raspberry Pi', 'HERMES Simples · ADS-B',
+      pl.gpio === 'ligado' ? 'missão ligada' : pl.gpio === 'desligado' ? 'missão desligada' : '—',
+      pl.gpio === 'ligado' ? `LIGAR enviado ${ago(pl.lastOnAt, n)} (repete a cada 2 s)` : 'aguardando o bit Missão do TT&C',
+      pl.semDados && !pl.blocks ? 'Nada chegou do Pi. Veja journalctl -u hermes-simples no Pi (o dump1090 precisa subir com o SDR) e confira PB10 → pino 10, pino 8 → PB11 e o GND.' : ''),
+    `<div class="arrow"><b>⇄</b>USART3 · 115200<br>← LIGAR/DESLIGAR<br>→ 4080 B a cada 5 s</div>`,
+    node(obcSt, 'OBC', 'recebe por DMA e valida',
+      pl.blocks ? `${pl.blocks} blocos` : '0 blocos',
+      pl.lastBlock ? `último ${ago(pl.lastBlockAt, n)}: ${pl.lastBlock.validos} aviões, ${pl.lastBlock.vazios} vazios, ${pl.lastBlock.descartados} descartados` : 'nenhum bloco ainda',
+      pl.resyncs || pl.uartErros ? `${pl.resyncs} realinhamentos, ${pl.uartErros} erros de UART` : ''),
+    `<div class="arrow"><b>→</b>USART1 · 9600<br>'P' (28 B/avião) a cada 5 s</div>`,
+    node(ttcSt, 'TT&C', 'ESP32 → LoRa → solo',
+      pl.downlinks ? `${pl.downlinks} quadros 'P'` : "0 quadros 'P'",
+      pl.lastDownlink ? `último ${ago(pl.lastDownlinkAt, n)}: ${pl.lastDownlink.n} aviões, ${pl.lastDownlink.bytes} B` : 'sai a cada 5 s com a missão ligada e dados do Pi', ''),
+  ].join('');
+
+  const planes = pl.planes;
+  $('pld-meta').textContent = pl.planesAt ? `${planes.length} aviões · quadro de ${ago(pl.planesAt, n)}` : 'nenhum quadro ainda';
+  const f = (v, d, u = '') => (v == null ? '<td class="na">—</td>' : `<td>${v.toFixed(d)}${u}</td>`);
+  $('pld-table').innerHTML = `<tr><th>ICAO</th><th>Latitude</th><th>Longitude</th><th>Altitude (ft)</th><th>Velocidade (kt)</th><th>Rumo (°)</th><th>Posição (MET)</th></tr>` +
+    (planes.length ? planes.map((p) => `<tr><td>${p.icao}</td>${f(p.lat, 4)}${f(p.lon, 4)}${f(p.alt, 0)}${f(p.gs, 0)}${f(p.track, 0)}<td>${p.posMetMs ? (p.posMetMs / 1000).toFixed(1) + ' s' : '—'}</td></tr>`).join('')
+      : '<tr><td colspan="7" class="na" style="text-align:left">Os aviões aparecem aqui quando o OBC repassar o primeiro quadro ao TT&C.</td></tr>');
+  renderMap();
+}
+function renderMap() {
+  const tr = S.payload.tracks;
+  const pts = Object.values(tr).flat();
+  const W = 420, H = 300, M = 34;
+  if (!pts.length) { $('pld-map').innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" fill="#8c8b83" font-size="13">sem posições ainda</text>`; return; }
+  let la0 = Math.min(...pts.map((p) => p[0])), la1 = Math.max(...pts.map((p) => p[0]));
+  let lo0 = Math.min(...pts.map((p) => p[1])), lo1 = Math.max(...pts.map((p) => p[1]));
+  const pad = Math.max(0.01, (la1 - la0) * 0.15, (lo1 - lo0) * 0.15);
+  la0 -= pad; la1 += pad; lo0 -= pad; lo1 += pad;
+  const k = Math.min((W - 2 * M) / (lo1 - lo0), (H - 2 * M) / (la1 - la0));
+  const X = (lo) => M + (lo - lo0) * k, Y = (la) => H - M - (la - la0) * k;
+  let g = '';
+  for (let i = 0; i <= 4; i++) {
+    const lo = lo0 + (lo1 - lo0) * i / 4, la = la0 + (la1 - la0) * i / 4;
+    g += `<line class="grid" x1="${X(lo)}" y1="${M / 2}" x2="${X(lo)}" y2="${H - M / 2}"/><text class="glabel" x="${X(lo)}" y="${H - 6}" text-anchor="middle">${lo.toFixed(2)}</text>`;
+    g += `<line class="grid" x1="${M / 2}" y1="${Y(la)}" x2="${W - M / 2}" y2="${Y(la)}"/><text class="glabel" x="4" y="${Y(la) - 3}">${la.toFixed(2)}</text>`;
+  }
+  for (const [icao, t] of Object.entries(tr)) {
+    if (t.length > 1) g += `<polyline class="trk" points="${t.map((p) => `${X(p[1]).toFixed(1)},${Y(p[0]).toFixed(1)}`).join(' ')}"/>`;
+    const [la, lo] = t.at(-1);
+    g += `<circle class="pt" cx="${X(lo)}" cy="${Y(la)}" r="5"><title>${icao} · ${la.toFixed(4)}, ${lo.toFixed(4)}</title></circle><text class="plabel" x="${X(lo) + 8}" y="${Y(la) - 6}">${icao}</text>`;
+  }
+  $('pld-map').innerHTML = g;
+}
+
 // ---------------------------------------------------------------- ligações
 function renderPins() {
   const rows = wires();
@@ -362,7 +436,7 @@ function addRaw(e) {
 // ---------------------------------------------------------------------- SSE
 function render() {
   renderTop(); renderSummary(); renderStateMachine(); renderFeed(); renderTasks();
-  renderTtc(); renderTelemetry(); renderPins();
+  renderTtc(); renderPayload(); renderTelemetry(); renderPins();
   $('foot').textContent = `Painel aberto às ${new Date(S.startedAt).toLocaleTimeString('pt-BR')} · logs da sessão em ${S.logDir}`;
 }
 const es = new EventSource('/events');
