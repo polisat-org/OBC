@@ -51,6 +51,10 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/hermes_protocol.c;
     Core/Src/payload_downlink.c;
     Core/Src/adcs_link.c;
+    Core/Src/eps.c;
+    Core/Src/ina3221.c;
+    Core/Src/max17048.c;
+    Core/Src/mp2733.c;
     
     # Add user sources here
 )

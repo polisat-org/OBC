@@ -32,6 +32,7 @@
 #include "hermes_adsb.h"
 #include "payload_downlink.h"
 #include "adcs_link.h"
+#include "eps.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -73,7 +74,7 @@ const osThreadAttr_t mainTask_attributes = {
 osThreadId_t housekeepTaskHandle;
 const osThreadAttr_t housekeepTask_attributes = {
   .name = "housekeepTask",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for transmitTask */
@@ -637,6 +638,7 @@ void initializeEverything(BME280_HandleTypeDef *BMEBat) {
 	Set_Time(0, 0, 0, 1, 1, 1, 0);
 	BME280_initDefault(BMEBat, hi2c1);
 	BME280_setOversampling(BMEBat, BME280_OS_16x, PSSR); // talvez devesse ser ALL aqui ao invés de PSSR
+	eps_init(&hi2c1);   /* MUX PCA9548A + MP2733/MAX17048/INA3221 (como no board_obc) */
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
@@ -968,7 +970,16 @@ void StartHousekeepTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	  osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, osWaitForever);
+	  /* Acorda a cada EPS_KEEPALIVE_MS para reaplicar os limites dos carregadores (watchdog do MP2733);
+	   * a leitura completa continua a cada 60 s (HkTickTimer) ou no boot. */
+	  uint32_t hkFlags = osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, pdMS_TO_TICKS(EPS_KEEPALIVE_MS));
+	  if (hkFlags == (uint32_t)osFlagsErrorTimeout) {
+		  eps_keepalive();
+		  continue;
+	  }
+	  if (hkFlags & 0x80000000U) {   /* outro erro de osThreadFlagsWait */
+		  continue;
+	  }
 	  BME280_readSingleShot(&BMEBat);
 
 	  telemetryPacket.temperatura_estrutura = BMEBat.READ.TEMP;
@@ -989,6 +1000,7 @@ void StartHousekeepTask(void *argument)
 	  uint8_t diaSemana;
 	  Get_Time(&telemetryPacket.segundo, &telemetryPacket.minuto, &telemetryPacket.hora, &diaSemana, &telemetryPacket.dia, &telemetryPacket.mes, &telemetryPacket.ano);
 	  telemetryPacket.deploy_antena = antennaDeployed ? 1U : 0U;
+	  eps_ler(&telemetryPacket);   /* tensões, correntes, carregadores e baterias */
 	  /* último azimute recebido do ADCS ("270.5" + '\0'); vazio se nunca chegou */
 	  memcpy(telemetryPacket.angulo_apontamento, g_azimute, sizeof(telemetryPacket.angulo_apontamento));
 
