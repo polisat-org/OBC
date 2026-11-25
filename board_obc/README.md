@@ -14,6 +14,18 @@ Este README descreve o hardware e o funcionamento do firmware (`main.c`).
 
 ## Hardware
 
+### Guia de uso da PCB
+
+A imagem abaixo resume a placa em vista superior: posição dos conectores (J1, J2, J3 e SWD), pinagem com os nomes dos sinais do barramento, TX e RX de cada UART por subsistema, alimentação e periféricos de bordo.
+
+![Guia de uso da PCB do OBC](guia-pcb-obc.png)
+
+Pontos para quem for ligar a placa:
+
+- O pino 1 de cada conector é o pad quadrado.
+- TX é o sinal que o OBC transmite e RX é o sinal que o OBC recebe (nomes vistos do lado do OBC). O par da UART do TTC fica em conectores diferentes: `OTTC_UART1_TX` no J1 (pino 19) e `OTTC_UART1_RX` no J2 (pino 18).
+- A rede 3V3 é gerada na placa pelo AMS1117-3.3 a partir do VBUS da USB. A rede 13V8 só aparece nos conectores J2 e J3.
+
 ### Microcontrolador e clock
 
 | Item | Configuração |
