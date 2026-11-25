@@ -76,7 +76,9 @@ nesta variante; o projeto `stateMachineInVSCode` só tem os ganchos `#if MONITOR
   SYSCLK continua o mesmo do voo. Sem o LSE, o OBC roda sem porta COM.
 - No boot, o OBC espera até 15 s o terminal abrir (sinal DTR) antes de seguir, para não perder as primeiras linhas.
 - Gravação: ST-Link avulso ou o de um Nucleo (sem os jumpers do CN2, cabo do CN4 no SWD da PCB). O `--cubeprog`
-  usa o `STM32_Programmer_CLI`; também serve para gravar o Nucleo.
+  usa o `STM32_Programmer_CLI` e o `--stflash` usa o `st-flash` (stlink-tools); os dois também gravam o Nucleo.
+- O `build_flash.sh` roda no WSL (grava pelo Windows) e no Linux nativo (grava direto pela USB; sem opção, copia para
+  o drive `NOD_L476RG` montado).
 
 ## Payload (Raspberry Pi Zero W, HERMES Simples)
 

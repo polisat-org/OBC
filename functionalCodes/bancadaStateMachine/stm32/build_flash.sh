@@ -8,6 +8,9 @@
 #                                          #   (porta COM virtual); ADCS na USART2 como no voo
 #   ./build_flash.sh --cubeprog            # grava pelo STM32CubeProgrammer (qualquer ST-Link no SWD), não pelo
 #                                          #   drive NOD_L476RG do Nucleo
+#   ./build_flash.sh --stflash             # grava pelo st-flash (stlink-tools, código aberto; bom no Linux)
+#
+# Roda no WSL ou no Linux nativo (detecta sozinho): no WSL grava pelo Windows, no Linux direto pela USB.
 #   ./build_flash.sh --original            # código da branch sem nenhuma alteração
 #   ./build_flash.sh --no-flash            # só compila
 #   ./build_flash.sh --local               # compila o working tree em vez da branch remota (REF)
@@ -36,6 +39,7 @@ for a in "$@"; do
     --monitor) VARIANT=monitor ;;
     --monitor-usb) VARIANT=monitor-usb ;;
     --cubeprog) FLASHER=cubeprog ;;
+    --stflash) FLASHER=stflash ;;
     --no-flash) FLASH=0 ;;
     --local) LOCAL=1 ;;
     *) echo "opção desconhecida: $a"; exit 1 ;;
@@ -92,18 +96,45 @@ echo "$COMMIT $VARIANT" > "$OUT/COMMIT"
 
 if [[ "$FLASH" == 0 ]]; then exit 0; fi
 
+# Ambiente: WSL (grava pelo Windows) ou Linux nativo (grava direto pela USB do ST-Link).
+if [[ -n "${BANCADA_AMBIENTE:-}" ]]; then AMBIENTE="$BANCADA_AMBIENTE"   # forçar (testes)
+elif grep -qi microsoft /proc/version 2>/dev/null || [[ -n "${WSL_DISTRO_NAME:-}" ]]; then AMBIENTE=wsl; else AMBIENTE=linux; fi
+BIN="$OUT/stateMachine.bin"
+echo "[flash] ambiente $AMBIENTE, método $FLASHER"
+
+if [[ "$FLASHER" == stflash ]]; then
+  # stlink-tools (código aberto): sudo apt install stlink-tools. No WSL só com a USB repassada pelo usbipd.
+  command -v st-flash >/dev/null || { echo "st-flash não encontrado: sudo apt install stlink-tools"; exit 1; }
+  st-flash --reset write "$BIN" 0x08000000
+  exit $?
+fi
+
 if [[ "$FLASHER" == cubeprog ]]; then
   # STM32CubeProgrammer: ST-Link avulso (V2/V3) ou o do Nucleo (sem os jumpers CN2, cabo no CN4) no SWD da PCB
-  CLI="$(command -v STM32_Programmer_CLI || command -v STM32_Programmer_CLI.exe || true)"
-  [[ -z "$CLI" ]] && CLI="/mnt/c/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe"
-  [[ -x "$CLI" ]] || { echo "STM32_Programmer_CLI não encontrado (instale o STM32CubeProgrammer)"; exit 1; }
-  BIN="$OUT/stateMachine.bin"; [[ "$CLI" == *.exe ]] && BIN="$(wslpath -w "$BIN")"
+  CLI="$(command -v STM32_Programmer_CLI || true)"
+  if [[ -z "$CLI" && "$AMBIENTE" == wsl ]]; then
+    CLI="$(command -v STM32_Programmer_CLI.exe || true)"
+    [[ -z "$CLI" ]] && CLI="/mnt/c/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe"
+  fi
+  if [[ -z "$CLI" && "$AMBIENTE" == linux ]]; then   # instalação padrão no Linux fica na home
+    for c in "$HOME/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI" /opt/st/stm32cubeprogrammer/bin/STM32_Programmer_CLI; do
+      [[ -x "$c" ]] && CLI="$c" && break
+    done
+  fi
+  [[ -n "$CLI" && -x "$CLI" ]] || { echo "STM32_Programmer_CLI não encontrado (instale o STM32CubeProgrammer, ou use --stflash)"; exit 1; }
+  [[ "$CLI" == *.exe ]] && BIN="$(wslpath -w "$BIN")"
   "$CLI" -c port=SWD mode=UR -w "$BIN" 0x08000000 -v -rst
   exit $?
 fi
 
-# Gravação: o ST-Link do Nucleo aparece no Windows como um drive "NOD_L476RG";
-# copiar o .bin para ele grava a flash e reinicia o STM32.
+# Gravação pelo drive "NOD_L476RG" do ST-Link do Nucleo: copiar o .bin grava a flash e reinicia o STM32.
+if [[ "$AMBIENTE" == linux ]]; then
+  for d in "/media/$USER/NOD_L476RG" "/run/media/$USER/NOD_L476RG" /media/NOD_L476RG /mnt/NOD_L476RG; do
+    if [[ -d "$d" ]]; then cp "$BIN" "$d/" && sync && echo "[flash] gravado em $d"; exit $?; fi
+  done
+  echo "drive NOD_L476RG não montado (Nucleo conectado? abra no gerenciador de arquivos), ou use --stflash / --cubeprog"
+  exit 1
+fi
 WIN_BIN="$(wslpath -w "$OUT/stateMachine.bin")"
 powershell.exe -NoProfile -Command "
   \$v = Get-Volume | Where-Object FileSystemLabel -eq 'NOD_L476RG' | Select-Object -First 1
