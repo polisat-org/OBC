@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Compila a máquina de estados da branch code_state_machine e grava no NUCLEO-L476RG.
+# Compila o firmware integrado do OBC (branch main) e grava no NUCLEO-L476RG.
 #
 #   ./build_flash.sh                       # variante de bancada (padrão): compila e grava
+#   ./build_flash.sh --monitor             # PC no lugar do TT&C: comandos digitados no monitor serial
+#                                          #   (ST-Link, 115200), debug só em texto, telemetria a cada 10 s
 #   ./build_flash.sh --original            # código da branch sem nenhuma alteração
 #   ./build_flash.sh --no-flash            # só compila
 #   ./build_flash.sh --local               # compila o working tree em vez da branch remota (REF)
@@ -15,7 +17,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="${REPO:-$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || echo "$HERE/../../OBC")}"
-REF="${REF:-origin/code_state_machine}"
+REF="${REF:-origin/main}"
 PROJ="${PROJ:-functionalCodes/stateMachineInVSCode}"
 OUT="$HERE/build"
 SRC="$OUT/src"
@@ -26,6 +28,7 @@ LOCAL=0
 for a in "$@"; do
   case "$a" in
     --original) VARIANT=original ;;
+    --monitor) VARIANT=monitor ;;
     --no-flash) FLASH=0 ;;
     --local) LOCAL=1 ;;
     *) echo "opção desconhecida: $a"; exit 1 ;;
@@ -45,6 +48,7 @@ fi
 P="$SRC/$PROJ"
 echo "[build] $REF ($COMMIT), variante $VARIANT -> $OUT"
 if [[ "$VARIANT" == bancada ]]; then python3 "$HERE/patch_bancada.py" "$P"; fi
+if [[ "$VARIANT" == monitor ]]; then python3 "$HERE/patch_bancada.py" "$P" --sem-espelho; fi
 
 CPU="-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard"
 INC="-I$P/Core/Inc -I$P/Drivers/STM32L4xx_HAL_Driver/Inc -I$P/Drivers/CMSIS/Device/ST/STM32L4xx/Include
@@ -60,6 +64,8 @@ FILES=$(ls "$P"/Core/Src/*.c "$P"/Drivers/STM32L4xx_HAL_Driver/Src/*.c \
 # shellcheck disable=SC2086
 DEFS="-DUSE_HAL_DRIVER -DSTM32L476xx"
 if [[ "$VARIANT" == bancada ]]; then DEFS="$DEFS -DBANCADA_ESPELHO=1 -DBANCADA_MISSAO_CONTINUA=1 -DBANCADA_ADCS_UART4=1 -DBANCADA_ADCS_RESET=1"; fi   # P/H/Z na USART2; payload sempre ligado; ADCS em A0/A1
+# monitor: TCs digitados na USART2, ADCS em A0/A1, nada binário na USART2, telemetria a cada 10 s, missão por comando
+if [[ "$VARIANT" == monitor ]]; then DEFS="$DEFS -DTC_ON_USART2=1 -DBANCADA_ADCS_UART4=1 -DBANCADA_ADCS_RESET=1 -DHK_PERIODO_MS=10000U"; fi
 # shellcheck disable=SC2086
 arm-none-eabi-gcc $CPU $DEFS -std=gnu11 -Og -g3 \
   -ffunction-sections -fdata-sections $INC $FILES "$P/Core/Startup/startup_stm32l476rgtx.s" \

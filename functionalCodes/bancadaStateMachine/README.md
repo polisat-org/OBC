@@ -1,6 +1,6 @@
 # Bancada do OBC: máquina de estados + ESP32 simulando o TT&C
 
-Testa a máquina de estados do OBC (branch `code_state_machine`, `functionalCodes/stateMachineInVSCode`) com um
+Testa a máquina de estados do OBC (branch `main`, `functionalCodes/stateMachineInVSCode`) com um
 ESP32 no papel do TT&C. O ESP32 roda sozinho, mandando telecomandos de um roteiro fixo pela USART1, como no
 satélite. O PC **só lê o STM32** (USART2 pelo ST-Link) e mostra tudo num painel web.
 
@@ -30,7 +30,7 @@ microcontrolador no Nucleo-64 (pontes SB62/SB63 abertas de fábrica). O painel t
 ## Uso
 
 Fica em `functionalCodes/bancadaStateMachine/` do repositório OBC. O build usa `git archive` da branch
-(`REF`, padrão `origin/code_state_machine`), então compila o que está no remoto, não o working tree.
+(`REF`, padrão `origin/main`), então compila o que está no remoto, não o working tree (`--local` compila o working tree).
 
 ```bash
 cd functionalCodes/bancadaStateMachine
@@ -43,6 +43,23 @@ node bridge/server.mjs        # abre a COM18 e serve o painel em http://localhos
 
 Só precisa do Node (sem `npm install`). A COM18 não pode estar aberta em outro programa. Opções do bridge:
 `--stm COM18 --http 8780 --no-relay`.
+
+## Variante monitor: o PC no lugar do TT&C
+
+```bash
+./stm32/build_flash.sh --monitor --local   # --local enquanto a mudança não estiver na main remota
+```
+
+Abra a porta COM do ST-Link a **115200** em qualquer monitor serial (Arduino IDE, PuTTY, VS Code) e digite o
+telecomando como **um caractere hexadecimal**: `0`..`9`, `a`..`f` (= 0x0..0xF; Mission 1, Deploy 2, Detumbling 4,
+Pointing 8; ex.: `9` = Mission + Pointing, `0` = tudo desligado). Enter/CR/LF são ignorados. O ESP32 do TT&C pode
+continuar ligado na USART1 (os dois caminhos valem). Nessa variante:
+
+- a USART2 só tem texto: o debug e uma linha `tm ...` legível a cada telemetria (baterias, barramentos, carregadores,
+  temperaturas, deploy, azimute), sem quadros binários;
+- a telemetria sai a cada **10 s** (voo: 60 s);
+- ADCS na UART4 (A0/A1) e reset do Nano em D7, como na variante de bancada;
+- a missão do payload liga e desliga por comando (sem `BANCADA_MISSAO_CONTINUA`).
 
 ## Payload (Raspberry Pi Zero W, HERMES Simples)
 

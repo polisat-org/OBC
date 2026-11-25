@@ -7,13 +7,15 @@ conseguir acompanhar tudo pela USART2:
   2. debugPrintf usa o uartMutex, para uma linha de debug não cair no meio de um quadro de telemetria.
   3. Cada telecomando recebido gera "rx tc=0xNN" no debug (o firmware original só imprime quando algo muda).
 
-Uso: patch_bancada.py <pasta do projeto stateMachineInVSCode>. Falha se algum trecho esperado não existir.
+Uso: patch_bancada.py <pasta do projeto stateMachineInVSCode> [--sem-espelho]. Falha se algum trecho esperado não
+existir. --sem-espelho (variante monitor) não aplica o item 1: a USART2 fica só com texto, para um monitor serial.
 """
 import re
 import sys
 from pathlib import Path
 
 proj = Path(sys.argv[1])
+SEM_ESPELHO = "--sem-espelho" in sys.argv[2:]
 
 
 def patch(rel, pattern, repl, count=1):
@@ -53,7 +55,8 @@ patch(
 )
 
 # 1. telemetria espelhada na USART2
-patch(
+if not SEM_ESPELHO:
+  patch(
     "Core/Src/main.c",
     r"(\n(\s*)HAL_UART_Transmit\(&huart1, \(uint8_t\*\) telemetryPacket, sizeof\(Telemetry_t\), 1000\);)",
     r"""\1

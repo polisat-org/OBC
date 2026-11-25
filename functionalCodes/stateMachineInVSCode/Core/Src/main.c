@@ -47,7 +47,6 @@
 #define TASK_START_FLAG      (1U << 0)
 #define TASK_STOP_FLAG       (1U << 1)
 
-#define TC_ON_USART2         0
 #define ENABLE_DEBUG_UART2   (!ADCS_NA_USART2)   /* na PCB a USART2 é do ADCS */
 /* USER CODE END PD */
 
@@ -203,6 +202,35 @@ static void debugPrintf(const char *format, ...)
 	va_end(args);
 #else
 	(void)format;
+#endif
+}
+
+/* Resumo legível do quadro 'T' no debug (o printf do newlib-nano não tem float). */
+static const char *fmt2(char *b, float v)   /* "-12.34" */
+{
+	int32_t x = (int32_t)(v * 100.0f + (v < 0.0f ? -0.5f : 0.5f));
+	uint32_t m = (uint32_t)(x < 0 ? -x : x);
+	(void)snprintf(b, 12, "%s%lu.%02lu", x < 0 ? "-" : "", (unsigned long)(m / 100U), (unsigned long)(m % 100U));
+	return b;
+}
+static void debugTelemetria(const Telemetry_t *t)
+{
+#if ENABLE_DEBUG_UART2
+	/* static: só a transmitTask chama, e a pilha dela é de 512 B */
+	static Telemetry_t c;
+	static char v13[12], i13[12], v5[12], i5[12], tb[12], te[12], az[sizeof c.angulo_apontamento + 1];
+	c = *t;   /* cópia: Telemetry_t é packed */
+	memcpy(az, c.angulo_apontamento, sizeof c.angulo_apontamento);
+	az[sizeof c.angulo_apontamento] = '\0';
+	debugPrintf("[%08lu] tm %02u:%02u:%02u bat1=%umV/%u%% bat2=%umV/%u%% 13v8=%sV/%sA 5v=%sV/%sA "
+			"chg1=%02X/%02X chg2=%02X/%02X tbat=%sC test=%sC deploy=%u az=%s\r\n",
+			osKernelGetTickCount(), c.hora, c.minuto, c.segundo,
+			(unsigned)c.tensao_bateria_1, (unsigned)c.carga_bateria_1, (unsigned)c.tensao_bateria_2, (unsigned)c.carga_bateria_2,
+			fmt2(v13, c.tensao_13v8), fmt2(i13, c.corrente_13v8), fmt2(v5, c.tensao_5v), fmt2(i5, c.corrente_5v),
+			c.status_carregador_1, c.falha_carregador_1, c.status_carregador_2, c.falha_carregador_2,
+			fmt2(tb, c.temperatura_bateria), fmt2(te, c.temperatura_estrutura), c.deploy_antena, az[0] ? az : "-");
+#else
+	(void)t;
 #endif
 }
 
@@ -665,9 +693,17 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     {
         /* Same path as a USART1 telecommand. Both IRQs share priority 5,
          * so they never preempt each other on pendingTelecommand. */
-        pendingTelecommand = usart2RxBuffer;
+        /* Monitor serial: '0'..'9', 'a'..'f', 'A'..'F' viram o telecomando 0x0..0xF; o resto (CR, LF,
+         * espaço) é ignorado. Não aceita bytes crus: LF (0x0A) e CR (0x0D) seriam comandos válidos. */
+        uint8_t c = usart2RxBuffer, lc = (uint8_t)(c | 0x20U);
+        int16_t tc = (c >= '0' && c <= '9') ? (int16_t)(c - '0')
+                   : (lc >= 'a' && lc <= 'f') ? (int16_t)(lc - 'a' + 10) : -1;
         (void)HAL_UART_Receive_IT(&huart2, &usart2RxBuffer, 1U);
-        (void)osThreadFlagsSet(receiveTaskHandle, USART1_RX_FLAG);
+        if (tc >= 0)
+        {
+            pendingTelecommand = (uint8_t)tc;
+            (void)osThreadFlagsSet(receiveTaskHandle, USART1_RX_FLAG);
+        }
     }
 #endif
     else if (huart->Instance == HERMES_ADSB_UART_INSTANCE)
@@ -877,11 +913,17 @@ void StartMainTask(void *argument)
 	bool deployInProgress = false;
 	bool missionActive = false;
 
-	osTimerStart(HkTickTimerHandle, pdMS_TO_TICKS(60000));
+	osTimerStart(HkTickTimerHandle, pdMS_TO_TICKS(HK_PERIODO_MS));
 	/* primeira telemetria logo no boot (sem esperar 60 s): mostra ao solo que o OBC está vivo */
 	osThreadFlagsSet(housekeepTaskHandle, TASK_START_FLAG);
 	debugPrintf("[%08lu] main ready, mode=%u heap_livre=%u\r\n",
 			osKernelGetTickCount(), (unsigned int)mode, (unsigned int)xPortGetFreeHeapSize());
+	{
+		uint8_t e = eps_presentes();
+		debugPrintf("[%08lu] eps presentes=0x%02X mux=%u mp1=%u mp2=%u max1=%u max2=%u ina1=%u ina2=%u\r\n",
+				osKernelGetTickCount(), e, !!(e & EPS_TEM_MUX), !!(e & EPS_TEM_MP1), !!(e & EPS_TEM_MP2),
+				!!(e & EPS_TEM_MAX1), !!(e & EPS_TEM_MAX2), !!(e & EPS_TEM_INA1), !!(e & EPS_TEM_INA2));
+	}
 
 	/* Infinite loop */
 	for(;;)
@@ -1035,6 +1077,7 @@ void StartTransmitTask(void *argument)
 	  HAL_UART_Transmit(&huart1, &marker, 1, 100);
 	  HAL_UART_Transmit(&huart1, (uint8_t*) telemetryPacket, sizeof(Telemetry_t), 1000);
 	  osMutexRelease(uartMutexHandle);
+	  debugTelemetria(telemetryPacket);
 
 	  Event_t evt = {
 		  .type = EVT_TX_DONE,
@@ -1072,7 +1115,7 @@ void StartReceiveTask(void *argument)
         Error_Handler();
     }
 
-    debugPrintf("[%08lu] telecommands also accepted on USART2 (TC_ON_USART2)\r\n",
+    debugPrintf("[%08lu] monitor: digite o telecomando em hexa (0-f) nesta porta\r\n",
             osKernelGetTickCount());
 #endif
 
