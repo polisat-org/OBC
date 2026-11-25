@@ -4,6 +4,10 @@
 #   ./build_flash.sh                       # variante de bancada (padrão): compila e grava
 #   ./build_flash.sh --monitor             # PC no lugar do TT&C: comandos digitados no monitor serial
 #                                          #   (ST-Link, 115200), debug só em texto, telemetria a cada 10 s
+#   ./build_flash.sh --monitor-usb         # o mesmo na PCB do OBC (sem ST-Link): pela USB nativa do STM32
+#                                          #   (porta COM virtual); ADCS na USART2 como no voo
+#   ./build_flash.sh --cubeprog            # grava pelo STM32CubeProgrammer (qualquer ST-Link no SWD), não pelo
+#                                          #   drive NOD_L476RG do Nucleo
 #   ./build_flash.sh --original            # código da branch sem nenhuma alteração
 #   ./build_flash.sh --no-flash            # só compila
 #   ./build_flash.sh --local               # compila o working tree em vez da branch remota (REF)
@@ -23,12 +27,15 @@ OUT="$HERE/build"
 SRC="$OUT/src"
 
 VARIANT=bancada
+FLASHER=drive
 FLASH=1
 LOCAL=0
 for a in "$@"; do
   case "$a" in
     --original) VARIANT=original ;;
     --monitor) VARIANT=monitor ;;
+    --monitor-usb) VARIANT=monitor-usb ;;
+    --cubeprog) FLASHER=cubeprog ;;
     --no-flash) FLASH=0 ;;
     --local) LOCAL=1 ;;
     *) echo "opção desconhecida: $a"; exit 1 ;;
@@ -48,7 +55,7 @@ fi
 P="$SRC/$PROJ"
 echo "[build] $REF ($COMMIT), variante $VARIANT -> $OUT"
 if [[ "$VARIANT" == bancada ]]; then python3 "$HERE/patch_bancada.py" "$P"; fi
-if [[ "$VARIANT" == monitor ]]; then python3 "$HERE/patch_bancada.py" "$P" --sem-espelho; fi
+if [[ "$VARIANT" == monitor* ]]; then python3 "$HERE/patch_bancada.py" "$P" --sem-espelho; fi
 
 CPU="-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard"
 INC="-I$P/Core/Inc -I$P/Drivers/STM32L4xx_HAL_Driver/Inc -I$P/Drivers/CMSIS/Device/ST/STM32L4xx/Include
@@ -66,6 +73,13 @@ DEFS="-DUSE_HAL_DRIVER -DSTM32L476xx"
 if [[ "$VARIANT" == bancada ]]; then DEFS="$DEFS -DBANCADA_ESPELHO=1 -DBANCADA_MISSAO_CONTINUA=1 -DBANCADA_ADCS_UART4=1 -DBANCADA_ADCS_RESET=1"; fi   # P/H/Z na USART2; payload sempre ligado; ADCS em A0/A1
 # monitor: TCs digitados na USART2, ADCS em A0/A1, nada binário na USART2, telemetria a cada 10 s, missão por comando
 if [[ "$VARIANT" == monitor ]]; then DEFS="$DEFS -DTC_ON_USART2=1 -DBANCADA_ADCS_UART4=1 -DBANCADA_ADCS_RESET=1 -DHK_PERIODO_MS=10000U"; fi
+# monitor-usb (PCB): debug e TCs na USB nativa; UARTs como no voo (TT&C 1, ADCS 2, PLD 3)
+if [[ "$VARIANT" == monitor-usb ]]; then
+  U="$HERE/../usb_monitor"
+  DEFS="$DEFS -DMONITOR_USB=1 -DHAL_PCD_MODULE_ENABLED -DHK_PERIODO_MS=10000U"
+  INC="$INC -I$U -I$U/app -I$U/lib/Inc -I$U/hal/Inc"
+  FILES="$FILES $(ls "$U"/*.c "$U"/app/*.c "$U"/lib/Src/*.c "$U"/hal/Src/*.c)"
+fi
 # shellcheck disable=SC2086
 arm-none-eabi-gcc $CPU $DEFS -std=gnu11 -Og -g3 \
   -ffunction-sections -fdata-sections $INC $FILES "$P/Core/Startup/startup_stm32l476rgtx.s" \
@@ -77,6 +91,16 @@ arm-none-eabi-size "$OUT/stateMachine.elf"
 echo "$COMMIT $VARIANT" > "$OUT/COMMIT"
 
 if [[ "$FLASH" == 0 ]]; then exit 0; fi
+
+if [[ "$FLASHER" == cubeprog ]]; then
+  # STM32CubeProgrammer: ST-Link avulso (V2/V3) ou o do Nucleo (sem os jumpers CN2, cabo no CN4) no SWD da PCB
+  CLI="$(command -v STM32_Programmer_CLI || command -v STM32_Programmer_CLI.exe || true)"
+  [[ -z "$CLI" ]] && CLI="/mnt/c/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe"
+  [[ -x "$CLI" ]] || { echo "STM32_Programmer_CLI não encontrado (instale o STM32CubeProgrammer)"; exit 1; }
+  BIN="$OUT/stateMachine.bin"; [[ "$CLI" == *.exe ]] && BIN="$(wslpath -w "$BIN")"
+  "$CLI" -c port=SWD mode=UR -w "$BIN" 0x08000000 -v -rst
+  exit $?
+fi
 
 # Gravação: o ST-Link do Nucleo aparece no Windows como um drive "NOD_L476RG";
 # copiar o .bin para ele grava a flash e reinicia o STM32.

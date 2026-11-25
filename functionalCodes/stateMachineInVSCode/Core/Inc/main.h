@@ -78,6 +78,11 @@ void Error_Handler(void);
 #if TC_ON_USART2 && ADCS_NA_USART2
 #error "TC_ON_USART2 precisa do ADCS fora da USART2 (-DBANCADA_ADCS_UART4=1)"
 #endif
+/* Bancada na PCB do OBC (sem ST-Link): debug e telecomandos digitados pela USB nativa (PA11/PA12, porta COM
+ * virtual). Só com build_flash.sh --monitor-usb, que junta a pilha USB de bancadaStateMachine/usb_monitor. Voo: 0. */
+#ifndef MONITOR_USB
+#define MONITOR_USB 0
+#endif
 /* Período da telemetria 'T' (housekeeping). Voo: 60 s. */
 #ifndef HK_PERIODO_MS
 #define HK_PERIODO_MS 60000U

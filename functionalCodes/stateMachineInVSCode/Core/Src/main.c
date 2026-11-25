@@ -30,6 +30,9 @@
 #include "BME280.h"
 #include "DS3231.h"
 #include "hermes_adsb.h"
+#if MONITOR_USB
+#include "monitor_usb.h"   /* bancada na PCB: functionalCodes/bancadaStateMachine/usb_monitor */
+#endif
 #include "payload_downlink.h"
 #include "adcs_link.h"
 #include "eps.h"
@@ -195,6 +198,14 @@ int __io_putchar(int ch) {
 
 static void debugPrintf(const char *format, ...)
 {
+#if MONITOR_USB
+	{
+		va_list a;
+		va_start(a, format);
+		monitor_usb_vprintf(format, a);
+		va_end(a);
+	}
+#endif
 #if ENABLE_DEBUG_UART2
 	va_list args;
 	va_start(args, format);
@@ -215,7 +226,7 @@ static const char *fmt2(char *b, float v)   /* "-12.34" */
 }
 static void debugTelemetria(const Telemetry_t *t)
 {
-#if ENABLE_DEBUG_UART2
+#if ENABLE_DEBUG_UART2 || MONITOR_USB
 	/* static: só a transmitTask chama, e a pilha dela é de 512 B */
 	static Telemetry_t c;
 	static char v13[12], i13[12], v5[12], i5[12], tb[12], te[12], az[sizeof c.angulo_apontamento + 1];
@@ -913,17 +924,17 @@ void StartMainTask(void *argument)
 	bool deployInProgress = false;
 	bool missionActive = false;
 
+#if MONITOR_USB
+	/* bancada na PCB: porta COM virtual na USB do STM32 (espera até 15 s o terminal abrir) */
+	if (monitor_usb_init()) {
+		debugPrintf("[%08lu] monitor USB: digite o telecomando em hexa (0-f) nesta porta\r\n", osKernelGetTickCount());
+	}
+#endif
 	osTimerStart(HkTickTimerHandle, pdMS_TO_TICKS(HK_PERIODO_MS));
 	/* primeira telemetria logo no boot (sem esperar 60 s): mostra ao solo que o OBC está vivo */
 	osThreadFlagsSet(housekeepTaskHandle, TASK_START_FLAG);
 	debugPrintf("[%08lu] main ready, mode=%u heap_livre=%u\r\n",
 			osKernelGetTickCount(), (unsigned int)mode, (unsigned int)xPortGetFreeHeapSize());
-	{
-		uint8_t e = eps_presentes();
-		debugPrintf("[%08lu] eps presentes=0x%02X mux=%u mp1=%u mp2=%u max1=%u max2=%u ina1=%u ina2=%u\r\n",
-				osKernelGetTickCount(), e, !!(e & EPS_TEM_MUX), !!(e & EPS_TEM_MP1), !!(e & EPS_TEM_MP2),
-				!!(e & EPS_TEM_MAX1), !!(e & EPS_TEM_MAX2), !!(e & EPS_TEM_INA1), !!(e & EPS_TEM_INA2));
-	}
 
 	/* Infinite loop */
 	for(;;)
@@ -1008,7 +1019,17 @@ void StartHousekeepTask(void *argument)
   /* USER CODE BEGIN StartHousekeepTask */
 	static Telemetry_t telemetryPacket = {0};
 	static BME280_HandleTypeDef BMEBat;
+#if MONITOR_USB
+	monitor_usb_espera();
+#endif
 	initializeEverything(&BMEBat);
+	/* o que respondeu no I2C da EPS (bits de eps.h), depois do eps_init() */
+	{
+		uint8_t e = eps_presentes();
+		debugPrintf("[%08lu] eps presentes=0x%02X mux=%u mp1=%u mp2=%u max1=%u max2=%u ina1=%u ina2=%u\r\n",
+				osKernelGetTickCount(), e, !!(e & EPS_TEM_MUX), !!(e & EPS_TEM_MP1), !!(e & EPS_TEM_MP2),
+				!!(e & EPS_TEM_MAX1), !!(e & EPS_TEM_MAX2), !!(e & EPS_TEM_INA1), !!(e & EPS_TEM_INA2));
+	}
   /* Infinite loop */
   for(;;)
   {

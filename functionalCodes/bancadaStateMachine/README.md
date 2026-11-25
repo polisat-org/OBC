@@ -61,6 +61,23 @@ continuar ligado na USART1 (os dois caminhos valem). Nessa variante:
 - ADCS na UART4 (A0/A1) e reset do Nano em D7, como na variante de bancada;
 - a missão do payload liga e desliga por comando (sem `BANCADA_MISSAO_CONTINUA`).
 
+## Variante monitor-usb: a PCB do OBC (sem ST-Link)
+
+```bash
+./stm32/build_flash.sh --monitor-usb --cubeprog   # grava pelo SWD com o STM32CubeProgrammer
+```
+
+O mesmo que a variante monitor, mas o debug e os telecomandos digitados passam pela **USB nativa** do STM32
+(PA11/PA12, porta COM virtual, como no `board_obc`). As UARTs ficam como no voo: TT&C USART1, ADCS USART2, PLD
+USART3. A pilha USB (ST USB Device Library + HAL PCD, copiados do `board_obc`) fica em `usb_monitor/` e só entra
+nesta variante; o projeto `stateMachineInVSCode` só tem os ganchos `#if MONITOR_USB`.
+
+- Clock da USB: PLLSAI1 = MSI 4 MHz × 24 / 2 = 48 MHz, com o MSI calibrado pelo cristal de 32,768 kHz (LSE). O
+  SYSCLK continua o mesmo do voo. Sem o LSE, o OBC roda sem porta COM.
+- No boot, o OBC espera até 15 s o terminal abrir (sinal DTR) antes de seguir, para não perder as primeiras linhas.
+- Gravação: ST-Link avulso ou o de um Nucleo (sem os jumpers do CN2, cabo do CN4 no SWD da PCB). O `--cubeprog`
+  usa o `STM32_Programmer_CLI`; também serve para gravar o Nucleo.
+
 ## Payload (Raspberry Pi Zero W, HERMES Simples)
 
 | Nucleo | | Raspberry Pi | Sinal |
