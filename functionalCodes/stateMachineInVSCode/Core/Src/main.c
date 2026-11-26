@@ -47,6 +47,12 @@
 /* USER CODE BEGIN PD */
 #define USART1_RX_FLAG       (1U << 0)
 #define USART1_ERROR_FLAG    (1U << 1)
+#define USART1_ATIVIDADE_FLAG (1U << 2)   /* byte na USART1: reavalia o candidato a telecomando */
+/* Telecomando do TT&C = 1 byte isolado na USART1. O TT&C (ESP32) usa a UART0 (RX0/TX0) para o OBC, e a ROM
+ * do ESP32 imprime o log de boot (115200) nela a cada reset: a 9600 isso chega como uma rajada de bytes
+ * aleatórios, alguns na faixa 0x00-0x0F (0x02 = Deploy). Só vira telecomando o byte com pelo menos
+ * TC_SILENCIO_MS de silêncio (sem bytes nem erros) antes e depois. */
+#define TC_SILENCIO_MS       30U
 #define TASK_START_FLAG      (1U << 0)
 #define TASK_STOP_FLAG       (1U << 1)
 
@@ -157,6 +163,10 @@ static volatile uint32_t usart1LastError;
 static volatile uint32_t usart1ErrorCount;
 static volatile bool usart1RestartRequired;
 static volatile bool antennaDeployed;
+static volatile uint32_t usart1UltimaAtividade;   /* tick do último byte/erro na USART1 */
+static volatile uint8_t usart1Candidato;          /* byte isolado à espera do silêncio depois dele */
+static volatile bool usart1CandidatoValido;
+static volatile uint32_t usart1RajadasDescartadas;
 #if TC_ON_USART2
 static uint8_t usart2RxBuffer;
 static volatile uint8_t pendingTelecommand;
@@ -684,12 +694,19 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1)
     {
-        Event_t evt = {
-            .type = EVT_RX_DONE,
-            .timestamp = osKernelGetTickCount(),
-            .data.telecommand = usart1RxBuffer
-        };
-        (void)osMessageQueuePut(eventQueueHandle, &evt, 0U, 0U);
+        uint32_t agora = osKernelGetTickCount();
+        if ((agora - usart1UltimaAtividade) >= TC_SILENCIO_MS)
+        {
+            usart1Candidato = usart1RxBuffer;      /* silêncio antes: candidato a telecomando */
+            usart1CandidatoValido = true;
+        }
+        else
+        {
+            if (usart1CandidatoValido) { usart1RajadasDescartadas++; }
+            usart1CandidatoValido = false;         /* rajada: nenhum byte dela é telecomando */
+        }
+        usart1UltimaAtividade = agora;
+        (void)osThreadFlagsSet(receiveTaskHandle, USART1_ATIVIDADE_FLAG);
 
         if (HAL_UART_Receive_IT(&huart1, &usart1RxBuffer, 1U) != HAL_OK)
         {
@@ -748,6 +765,8 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     {
         usart1LastError = HAL_UART_GetError(huart);
         usart1ErrorCount++;
+        usart1UltimaAtividade = osKernelGetTickCount();   /* erro de quadro = lixo na linha */
+        usart1CandidatoValido = false;
 
         if (huart->RxState == HAL_UART_STATE_READY)
         {
@@ -1142,10 +1161,38 @@ void StartReceiveTask(void *argument)
 
     for (;;)
     {
-        flags = osThreadFlagsWait(USART1_RX_FLAG | USART1_ERROR_FLAG,
-                osFlagsWaitAny, osWaitForever);
+        uint32_t espera = osWaitForever;
+        if (usart1CandidatoValido)
+        {
+            uint32_t passou = osKernelGetTickCount() - usart1UltimaAtividade;
+            espera = (passou >= TC_SILENCIO_MS) ? 0U : (TC_SILENCIO_MS - passou);
+        }
+        flags = (espera == 0U) ? 0U
+                : osThreadFlagsWait(USART1_RX_FLAG | USART1_ERROR_FLAG | USART1_ATIVIDADE_FLAG,
+                        osFlagsWaitAny, espera);
 
-        if ((flags & osFlagsError) != 0U)
+        /* Candidato com TC_SILENCIO_MS de silêncio depois dele: entrega como telecomando. */
+        if (usart1CandidatoValido
+                && (osKernelGetTickCount() - usart1UltimaAtividade) >= TC_SILENCIO_MS)
+        {
+            Event_t evt = { .type = EVT_RX_DONE, .timestamp = osKernelGetTickCount() };
+            bool entregar = false;
+            __disable_irq();   /* reconfere aqui: um byte pode ter chegado depois do teste acima */
+            if (usart1CandidatoValido
+                    && (osKernelGetTickCount() - usart1UltimaAtividade) >= TC_SILENCIO_MS)
+            {
+                evt.data.telecommand = usart1Candidato;
+                usart1CandidatoValido = false;
+                entregar = true;
+            }
+            __enable_irq();
+            if (entregar)
+            {
+                (void)osMessageQueuePut(eventQueueHandle, &evt, 0U, osWaitForever);
+            }
+        }
+
+        if (flags == 0U || (flags & osFlagsError) != 0U)
         {
             continue;
         }
