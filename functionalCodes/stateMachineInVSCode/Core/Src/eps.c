@@ -6,13 +6,29 @@
 #include "max17048.h"
 #include "mp2733.h"
 
-/* Limites do MP2733 (iguais ao board_obc) */
-#define MP2733_REG_ICHG      0x05U
-#define MP2733_ICHG_MASK     0x7FU
-#define MP2733_ICHG_1_0A     0x19U   /* 25 * 40 mA = 1000 mA */
+/* Limites do MP2733: os mesmos do keepalive da bancada (bancada/eps_nano/eps_nano.ino, MP_LIM), que é a
+ * configuração validada. Escalas do datasheet MP2733 Rev. 1.1:
+ *   REG00h: EN_LIM (bit 6) + IIN_LIM (bits 5-0) = 100 mA + n x 50 mA   -> 0x52 = EN_LIM ligado, 1000 mA
+ *   REG05h: ICC (bits 6-0) = 320 mA + n x 40 mA                        -> 0x11 = 1000 mA
+ *   REG01h: VIN_MIN (bits 6-0) = 3,7 V + n x 100 mV                    -> 0x00 = 3,7 V
+ *   REG04h: VSYS_MIN (bits 3-1), BAT_LOADEN (bit 7)                    -> 110 = 3,675 V, BAT_LOADEN = 0
+ *   REG02h: EN_CHG_NTC = 0 (sem termistor na placa)                    -> 0xC9 */
 #define MP2733_REG_IINLIM    0x00U
 #define MP2733_IINLIM_MASK   0x7FU
-#define MP2733_IINLIM_1_5A   0x1CU   /* 100 mA + 28 * 50 mA = 1500 mA */
+#define MP2733_IINLIM_1_0A   0x52U
+#define MP2733_REG_ICHG      0x05U
+#define MP2733_ICHG_MASK     0x7FU
+#define MP2733_ICHG_1_0A     0x11U
+#define MP2733_REG_VINMIN    0x01U
+#define MP2733_VINMIN_MASK   0x7FU   /* bit 7 = REGISTER_RESET: não mexe */
+#define MP2733_VINMIN_3_7V   0x00U
+#define MP2733_REG_VSYS      0x04U
+#define MP2733_VSYS_MASK     0x8EU   /* BAT_LOADEN + VSYS_MIN */
+#define MP2733_VSYS_3_675V   0x0CU   /* BAT_LOADEN = 0, VSYS_MIN = 110 */
+#define MP2733_REG_NTC       0x02U
+#define MP2733_NTC_MASK      0xFFU
+#define MP2733_NTC_SEM_TERM  0xC9U
+#define MP2733_WD_RESET_BIT  0x08U   /* REG08h bit 3: reinicia o watchdog do MP2733 (volta a 0 sozinho) */
 
 #define INA1_ADDR 0x40U
 #define INA2_ADDR 0x41U
@@ -47,10 +63,17 @@ static void mp_limite(uint8_t reg, uint8_t mask, uint8_t valor)
 
 static void mp_limites(void)
 {
-	mp_limite(MP2733_REG_IINLIM, MP2733_IINLIM_MASK, MP2733_IINLIM_1_5A);
+	mp_limite(MP2733_REG_IINLIM, MP2733_IINLIM_MASK, MP2733_IINLIM_1_0A);
 	mp_limite(MP2733_REG_ICHG, MP2733_ICHG_MASK, MP2733_ICHG_1_0A);
+	mp_limite(MP2733_REG_VINMIN, MP2733_VINMIN_MASK, MP2733_VINMIN_3_7V);
+	mp_limite(MP2733_REG_VSYS, MP2733_VSYS_MASK, MP2733_VSYS_3_675V);
+	mp_limite(MP2733_REG_NTC, MP2733_NTC_MASK, MP2733_NTC_SEM_TERM);
+	/* ADC em conversão contínua (só para a telemetria; não muda a carga) */
 	mp_limite(MP2733_REG_ADC_OTG_CTRL, MP2733_ADC_RATE_BIT, MP2733_ADC_RATE_BIT);
 	mp_limite(MP2733_REG_TIMER_CONFIG, MP2733_EN_ADC_DSG_BIT, MP2733_EN_ADC_DSG_BIT);
+	/* Reinicia o watchdog do MP2733, como a bancada. Sem isso ele expira (40 s) e devolve ao padrão de fábrica
+	 * os registradores "reset by WTD" (REG02..REG08, REG0A, REG16): NTC ligado (carga suspensa), ICC 1,84 A, ADC off. */
+	mp_limite(MP2733_REG_TIMER_CONFIG, MP2733_WD_RESET_BIT, MP2733_WD_RESET_BIT);
 }
 
 /* Registradores de ADC do MP2733: 1 byte cada, escalas do datasheet (repetidas no solo):

@@ -15,8 +15,9 @@
 #define EPS_CH_INA1    2U     /* INA3221 0x40: tensões dos barramentos */
 #define EPS_CH_INA2    3U     /* INA3221 0x41: correntes dos barramentos */
 
-/* O MP2733 volta aos limites de fábrica se o watchdog dele expirar: o board_obc reaplica os limites a cada
- * ~1 s. Aqui o housekeeping acorda a cada EPS_KEEPALIVE_MS só para isso, além da leitura completa a cada 60 s. */
+/* O MP2733 volta ao padrão de fábrica se o watchdog dele expirar (40 s). O housekeeping acorda a cada
+ * EPS_KEEPALIVE_MS para reiniciar esse watchdog e reaplicar a configuração da bancada (eps.c), além da
+ * leitura completa a cada 60 s. */
 #define EPS_KEEPALIVE_MS 5000U
 
 /* Bits de eps_presentes() */
@@ -32,7 +33,7 @@
 void eps_init(I2C_HandleTypeDef *hi2c);
 /* Lê tudo e preenche os campos de EPS do pacote (os que não responderem ficam com o último valor). */
 void eps_ler(Telemetry_t *t);
-/* Só reaplica os limites de corrente dos MP2733 (watchdog do carregador). */
+/* Reaplica a configuração dos MP2733 e reinicia o watchdog deles. */
 void eps_keepalive(void);
 uint8_t eps_presentes(void);
 

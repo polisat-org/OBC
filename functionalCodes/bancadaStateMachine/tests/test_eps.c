@@ -92,7 +92,8 @@ int main(void) {
 	eps_init(&i2c);
 	CHECK(muxMask == 0);
 	CHECK(eps_presentes() == (EPS_TEM_MUX | EPS_TEM_MP1 | EPS_TEM_MP2 | EPS_TEM_MAX1 | EPS_TEM_INA1 | EPS_TEM_INA2));
-	CHECK((mp1->r8[0x00] & 0x7F) == 0x1C && (mp1->r8[0x05] & 0x7F) == 0x19);   /* limites 1,5 A / 1,0 A */
+	CHECK(mp1->r8[0x00] == 0x52 && (mp1->r8[0x05] & 0x7F) == 0x11);   /* EN_LIM + 1,0 A de entrada / 1,0 A de carga */
+	CHECK(mp1->r8[0x02] == 0xC9 && mp1->r8[0x04] == 0x5D);              /* NTC fora da carga; VSYS_MIN 3,675 V, BAT_LOADEN 0 */
 	CHECK(ina1->r16[0x00] != 0 && ina2->r16[0x00] != 0);                        /* INA configurados */
 
 	Telemetry_t t; memset(&t, 0, sizeof t);
@@ -104,6 +105,8 @@ int main(void) {
 	CHECK(t.adc_tensao_sistema_1 == 195 && t.adc_tensao_ntc_1 == 128 && t.adc_corrente_carga_1 == 40 && t.adc_corrente_sistema_1 == 30);
 	CHECK(perto(t.tensao_painel_solar_1, 9.0f) && t.taxa_carga_descarga_bateria_1 == 48);
 	CHECK((mp1->r8[0x03] & 0x40) && (mp1->r8[0x08] & 0x40));   /* ADC contínuo e EN_ADC_DSG ligados */
+	CHECK((mp1->r8[0x01] & 0x7F) == 0x00);                     /* VIN_MIN 3,7 V */
+	CHECK(mp1->r8[0x08] & 0x08);                               /* watchdog do MP2733 reiniciado */
 	CHECK(t.tensao_bateria_2 == 0 && t.carga_bateria_2 == 0);   /* bateria 2 ainda ausente */
 	CHECK(perto(t.tensao_13v8, 12.6f) && perto(t.tensao_5v, 5.0f));
 	CHECK(perto(t.corrente_13v8, 1.32f) && perto(t.corrente_5v, 0.874f));
@@ -117,10 +120,16 @@ int main(void) {
 
 	/* watchdog do MP2733 expirou: registradores voltam ao padrão; o keepalive reaplica os limites */
 	mp1->r8[0x00] = 0x48; mp1->r8[0x05] = 0xA6; mp2->r8[0x00] = 0x48; mp2->r8[0x05] = 0xA6;
+	mp1->r8[0x01] = 0x06; mp2->r8[0x01] = 0x06;   /* VIN POR: VIN_MIN de volta a 4,3 V */
+	mp1->r8[0x02] = 0xD9; mp2->r8[0x04] = 0xDB;   /* watchdog expirou: NTC e VSYS de volta ao padrão */
+	mp1->r8[0x08] &= (uint8_t)~0x08; mp2->r8[0x08] &= (uint8_t)~0x08;
 	eps_keepalive();
 	CHECK(muxMask == 0);
-	CHECK((mp1->r8[0x00] & 0x7F) == 0x1C && (mp1->r8[0x05] & 0x7F) == 0x19);
-	CHECK((mp2->r8[0x00] & 0x7F) == 0x1C && (mp2->r8[0x05] & 0x7F) == 0x19);
+	CHECK(mp1->r8[0x00] == 0x52 && (mp1->r8[0x05] & 0x7F) == 0x11);
+	CHECK(mp2->r8[0x00] == 0x52 && (mp2->r8[0x05] & 0x7F) == 0x11);
+	CHECK((mp1->r8[0x01] & 0x7F) == 0x00 && (mp2->r8[0x01] & 0x7F) == 0x00);   /* VIN_MIN reaplicado no keepalive */
+	CHECK(mp1->r8[0x02] == 0xC9 && mp2->r8[0x04] == 0x5D);                      /* NTC e VSYS_MIN reaplicados */
+	CHECK((mp1->r8[0x08] & 0x08) && (mp2->r8[0x08] & 0x08));                   /* watchdog reiniciado */
 
 	/* INA que para de responder: mantém o último valor e não trava */
 	ina1->presente = 0;

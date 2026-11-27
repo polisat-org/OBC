@@ -46,13 +46,13 @@ uint8_t MP2733_Init(MP2733_HandleTypeDef * MP2733, I2C_HandleTypeDef *hi2c)
         return 0; // Falha na comunicação
     }
 
-    // Configuração padrao dos registradores
-    MP2733->config.input_current_limit   = 0x48;  // 0b01001000
-    MP2733->config.input_voltage_reg     = 0x06;  // 0b00000110
-    MP2733->config.temp_protection       = 0xD9;  // 0b11011001
+    // Configuração validada na bancada (bancada/eps_nano/eps_nano.ino, MP_CFG; datasheet MP2733 Rev. 1.1)
+    MP2733->config.input_current_limit   = 0x52;  // EN_LIM=1 (respeita o pino ILIM), IIN_LIM = 100 + 18*50 = 1000 mA
+    MP2733->config.input_voltage_reg     = 0x00;  // VIN_MIN = 3,7 V
+    MP2733->config.temp_protection       = 0xC9;  // EN_CHG_NTC=0: a placa não tem termistor ("NTC hot" suspenderia a carga)
     MP2733->config.adc_otg_ctrl          = 0x10;  // 0b00010000
-    MP2733->config.charge_vsys_ctrl      = 0xDB;  // 0b11011011
-    MP2733->config.charge_current        = 0xA6;  // 0b10100110
+    MP2733->config.charge_vsys_ctrl      = 0x5D;  // BAT_LOADEN=0, carga ligada, VSYS_MIN = 3,675 V (+VTRACK 150 mV = ~3,82 V)
+    MP2733->config.charge_current        = 0x91;  // VBATT_PRE=3,0 V, ICC = 320 + 17*40 = 1000 mA
     MP2733->config.precharge_termination = 0x22;  // 0b00100010
     MP2733->config.charge_voltage        = 0xA0;  // 0b10100000
     MP2733->config.timer_config          = 0x95;  // 0b10010101
