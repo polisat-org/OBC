@@ -99,9 +99,15 @@ struct __attribute__((packed)) Telemetry {
 
     // Carga Util
 
+    // Estado do OBC (prova de que o telecomando foi executado; status do sistema, HLR-COMM-02)
+    uint8_t modo;            // SatMode_t: 0 IDLE, 1 MISSION, 2 DETUMBLING, 3 POINTING
+    uint8_t estado;          // bit0 missão (payload) ativa, bit1 deploy em curso, bit2 antenas abertas
+    uint8_t ultimo_tc;       // último telecomando que chegou ao OBC (0xFF = nenhum desde o boot)
+    uint8_t resultado_tc;    // 0 executado, 1 recusado (máscara inválida), 2 ignorado (deploy em curso)
+    uint8_t seq_t;           // contador de quadros 'T' (perda no solo = buracos)
 };
 
-_Static_assert(sizeof(Telemetry_t) == 85U,
+_Static_assert(sizeof(Telemetry_t) == 90U,
 		"Telemetry_t changed: update TELEMETRY_FORMAT in uart.py");
 
 #endif

@@ -58,6 +58,7 @@ size_t pld_compact(const Plane_t in[HERMES_NUM_PLANES],
                    PldCompactStats_t *stats)
 {
     PldCompactStats_t st = {0};
+    st.met_max_s = -1.0f;
     size_t n = 0;
 
     for (size_t k = 0; k < HERMES_NUM_PLANES; k++) {
@@ -73,6 +74,9 @@ size_t pld_compact(const Plane_t in[HERMES_NUM_PLANES],
             continue;
         }
 
+        if (finite_f(p->met_s) && p->met_s > st.met_max_s) {
+            st.met_max_s = p->met_s;
+        }
         PlaneDown_t *d = &out[n++];
         const int tem_pos = finite_f(p->lat) && finite_f(p->lon);
         d->icaoID = icao;
@@ -98,22 +102,69 @@ size_t pld_compact(const Plane_t in[HERMES_NUM_PLANES],
     return n;
 }
 
-size_t pld_build_frame(const PlaneDown_t *planes, size_t count,
+static void put_le16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
+static void put_le32(uint8_t *p, uint32_t v) { for (int i = 0; i < 4; i++) p[i] = (uint8_t)(v >> (8 * i)); }
+
+size_t pld_build_frame(const PlaneDown_t *planes, size_t count, const PldDownHeader_t *hdr,
                        uint8_t *buf, size_t cap)
 {
     if (count > PLD_DOWN_MAX_PLANES) {
         return 0U;
     }
-    size_t len = 2U + count * sizeof(PlaneDown_t);
+    size_t len = PLD_DOWN_HDR_SIZE + count * sizeof(PlaneDown_t);
     if (buf == NULL || cap < len || (count > 0U && planes == NULL)) {
         return 0U;
     }
     buf[0] = PLD_DOWN_MARKER;
     buf[1] = (uint8_t)count;
+    put_le16(&buf[2], hdr != NULL ? hdr->seq : 0U);
+    put_le32(&buf[4], hdr != NULL ? hdr->tx_met_ms : 0U);
+    put_le32(&buf[8], hdr != NULL ? hdr->mensagens : 0U);
     if (count > 0U) {
-        memcpy(&buf[2], planes, count * sizeof(PlaneDown_t));
+        memcpy(&buf[PLD_DOWN_HDR_SIZE], planes, count * sizeof(PlaneDown_t));
     }
     return len;
+}
+
+/* ------------------------------------------------------- mensagens ADS-B --- */
+void pld_msgs_reset(PldMsgs_t *m)
+{
+    memset(m, 0, sizeof(*m));
+}
+
+uint32_t pld_msgs_update(PldMsgs_t *m, const Plane_t in[HERMES_NUM_PLANES])
+{
+    for (size_t k = 0; k < HERMES_NUM_PLANES; k++) {
+        const Plane_t *p = &in[k];
+        uint32_t icao;
+        if (p->icaoID == 0.0f || !icao_valido(p->icaoID, &icao)) {
+            continue;
+        }
+        if (!finite_f(p->messages) || p->messages < 0.0f || p->messages > 4.0e9f) {
+            continue;
+        }
+        const uint32_t agora = (uint32_t)p->messages;
+        size_t j = 0;
+        while (j < m->usados && m->icao[j] != icao) {
+            j++;
+        }
+        if (j < m->usados) {
+            /* contador do dump1090 voltou (avião esquecido e visto de novo): conta tudo de novo */
+            m->total += (agora >= m->msgs[j]) ? (agora - m->msgs[j]) : agora;
+            m->msgs[j] = agora;
+        } else {
+            if (m->usados < PLD_MSGS_TABELA) {
+                j = m->usados++;
+            } else {
+                j = m->proximo;
+                m->proximo = (uint8_t)((m->proximo + 1U) % PLD_MSGS_TABELA);
+            }
+            m->icao[j] = icao;
+            m->msgs[j] = agora;
+            m->total += agora;
+        }
+    }
+    return m->total;
 }
 
 /* ------------------------------------------------------------ trailer TCS --- */

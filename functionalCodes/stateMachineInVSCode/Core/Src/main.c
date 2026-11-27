@@ -184,6 +184,14 @@ static volatile uint32_t usart1LastError;
 static volatile uint32_t usart1ErrorCount;
 static volatile bool usart1RestartRequired;
 static volatile bool antennaDeployed;
+/* Estado do OBC para a telemetria (escrito pela task principal, lido pelo housekeeping) */
+static volatile uint8_t g_modo = 0U;
+static volatile uint8_t g_estado = 0U;
+static volatile uint8_t g_ultimoTc = 0xFFU;
+static volatile uint8_t g_resultadoTc = 0xFFU;
+#define TC_RES_EXECUTADO   0U
+#define TC_RES_RECUSADO    1U
+#define TC_RES_IGNORADO    2U
 static volatile uint32_t usart1UltimaAtividade;   /* tick do último byte/erro na USART1 */
 static volatile uint8_t usart1Candidato;          /* byte isolado à espera do silêncio depois dele */
 static volatile bool usart1CandidatoValido;
@@ -280,7 +288,10 @@ static void handleTelecommand(uint8_t tc, SatMode_t *mode,
 		bool *deployInProgress, volatile bool *deployCompleted,
 		bool *missionActive)
 {
+	g_ultimoTc = tc;
+	g_resultadoTc = TC_RES_EXECUTADO;
 	if ((uint8_t)(tc & ~((uint8_t)TC_VALID_MASK)) != 0U) {
+		g_resultadoTc = TC_RES_RECUSADO;
 		debugPrintf("[%08lu] rx rejected: invalid mask 0x%02X\r\n",
 				osKernelGetTickCount(), tc);
 		return;
@@ -288,6 +299,7 @@ static void handleTelecommand(uint8_t tc, SatMode_t *mode,
 
 	// Bloqueia qualquer troca de modo enquanto o deploy estiver fisicamente em curso
 	if (*deployInProgress) {
+		g_resultadoTc = TC_RES_IGNORADO;
 		debugPrintf("[%08lu] rx ignored: deploy in progress (tc=0x%02X)\r\n",
 				osKernelGetTickCount(), tc);
 		return;
@@ -1096,6 +1108,16 @@ void StartMainTask(void *argument)
 					evt.timestamp, (unsigned int)evt.type);
 			break;
 		}
+
+		/* estado para a telemetria */
+		g_modo = (uint8_t)mode;
+		g_estado = (uint8_t)((missionActive ? 0x01U : 0U) | (deployInProgress ? 0x02U : 0U)
+				| (antennaDeployed ? 0x04U : 0U));
+		/* Depois de um telecomando (ou do fim do deploy), manda uma telemetria já, sem esperar o
+		 * HkTickTimer: o solo vê o modo novo em segundos, não em até 1 min. */
+		if (evt.type == EVT_RX_DONE || evt.type == EVT_DEPLOY_DONE) {
+			osThreadFlagsSet(housekeepTaskHandle, TASK_START_FLAG);
+		}
 	}
   /* USER CODE END 5 */
 }
@@ -1159,6 +1181,11 @@ void StartHousekeepTask(void *argument)
 	  eps_ler(&telemetryPacket);   /* tensões, correntes, carregadores e baterias */
 	  /* último azimute recebido do ADCS ("270.5" + '\0'); vazio se nunca chegou */
 	  memcpy(telemetryPacket.angulo_apontamento, g_azimute, sizeof(telemetryPacket.angulo_apontamento));
+	  telemetryPacket.modo = g_modo;
+	  telemetryPacket.estado = g_estado;
+	  telemetryPacket.ultimo_tc = g_ultimoTc;
+	  telemetryPacket.resultado_tc = g_resultadoTc;
+	  telemetryPacket.seq_t++;
 
 	  Event_t evt = {
 		  .type = EVT_HK_DONE,
@@ -1550,6 +1577,9 @@ void StartMissionTask(void *argument)
 	static uint8_t quadroH[PLD_TCS_FRAME_SIZE];
 	static PlaneDown_t avioes[PLD_DOWN_MAX_PLANES];
 	static uint8_t quadro[PLD_DOWN_FRAME_MAX];
+	static PldMsgs_t msgs;            /* mensagens ADS-B decodificadas na missão */
+	float metBloco = -1.0f;           /* maior met_s do último bloco (relógio de missão do payload) */
+	uint16_t seqP = 0U;
 	uint32_t tcsRuins = 0U;
 	size_t nAvioes = 0U;
 	bool temDados = false;
@@ -1603,6 +1633,8 @@ void StartMissionTask(void *argument)
 				missao = true;
 				temDados = false;
 				avisouSemDados = false;
+				pld_msgs_reset(&msgs);
+				metBloco = -1.0f;
 				inicioMissao = agora;
 				ultimoDownlink = agora;
 				ultimoComando = agora;
@@ -1626,6 +1658,8 @@ void StartMissionTask(void *argument)
 			{
 				PldCompactStats_t cs;
 				nAvioes = pld_compact(blocos, avioes, &cs);
+				metBloco = cs.met_max_s;
+				(void)pld_msgs_update(&msgs, blocos);
 				temDados = true;
 				avisouSemDados = false;
 				debugPrintf("[%08lu] pld bloco %lu: %u avioes, %u vazios, %u descartados\r\n",
@@ -1686,7 +1720,15 @@ void StartMissionTask(void *argument)
 
 		if (missao && temDados && (agora - ultimoDownlink) >= PLD_DOWNLINK_MS)
 		{
-			size_t len = pld_build_frame(avioes, nAvioes, quadro, sizeof(quadro));
+			/* instante da transmissão no relógio de missão do payload: met_s do bloco + o tempo
+			 * que o OBC segurou o bloco (latência recepção -> transmissão, HLR-ADS-08) */
+			PldDownHeader_t hdr = {
+				.seq = seqP++,
+				.tx_met_ms = (metBloco >= 0.0f)
+						? (uint32_t)(metBloco * 1000.0f) + (osKernelGetTickCount() - ultimoBloco) : 0U,
+				.mensagens = msgs.total,
+			};
+			size_t len = pld_build_frame(avioes, nAvioes, &hdr, quadro, sizeof(quadro));
 			if (len > 0U)
 			{
 				payloadEnviaDownlink(quadro, len);

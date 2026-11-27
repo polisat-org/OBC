@@ -266,7 +266,7 @@ function closeGroup() {
 }
 
 // ------------------------------------------------- parser da USART2 (texto + binário)
-// Linhas de debug começam com '['; um quadro de telemetria é 'T' + 85 bytes no início de uma linha.
+// Linhas de debug começam com '['; um quadro de telemetria é 'T' + 90 bytes no início de uma linha.
 let lineBuf = [];
 let frame = null;
 let pFrame = null;   // quadro 'P' espelhado: { count: null | n, bytes: [] }
@@ -292,9 +292,9 @@ function onStmData(chunk) {
       continue;
     }
     if (pFrame) {
-      if (pFrame.count === null) { pFrame.count = b; if (b > 20) { raw(`quadro 'P' com count inválido (${b})`, 'error'); pFrame = null; } else if (b === 0) { onPlanes(Buffer.alloc(0), 0); pFrame = null; } continue; }
-      pFrame.bytes.push(b);
-      if (pFrame.bytes.length === pFrame.count * PLANE_DOWN_SIZE) { const c = pFrame.count, buf = Buffer.from(pFrame.bytes); pFrame = null; onPlanes(buf, c); }
+      if (pFrame.count === null) { pFrame.count = b; if (b > 20) { raw(`quadro 'P' com count inválido (${b})`, 'error'); pFrame = null; } continue; }
+      pFrame.bytes.push(b);   // 10 B de cabeçalho (seq, tx_met_ms, mensagens) + count x 36 B
+      if (pFrame.bytes.length === P_HDR_RESTO + pFrame.count * PLANE_DOWN_SIZE) { const c = pFrame.count, buf = Buffer.from(pFrame.bytes); pFrame = null; onPlanes(buf.subarray(P_HDR_RESTO), c, buf.subarray(0, P_HDR_RESTO)); }
       continue;
     }
     if (lineBuf.length === 0 && b === 0x54) { frame = []; continue; }
@@ -316,9 +316,11 @@ setInterval(() => {
 }, 200);
 
 const PLANE_DOWN_SIZE = 36; // PlaneDown_t do OBC (payload_downlink.h)
+const P_HDR_RESTO = 10;     // depois do count: seq (u16), tx_met_ms (u32), mensagens (u32)
 const callsignOf = (buf, o) => { let s = ''; for (let i = 0; i < 8; i++) { const c = buf[o + i]; if (c < 0x20 || c > 0x7e) break; s += String.fromCharCode(c); } return s.trim() || null; };
 
-function onPlanes(buf, count) {
+function onPlanes(buf, count, hdr) {
+  const ph = hdr && hdr.length >= 10 ? { seq: hdr.readUInt16LE(0), txMetMs: hdr.readUInt32LE(2), mensagens: hdr.readUInt32LE(6) } : null;
   const p = S.payload;
   const t = now();
   const planes = [];
@@ -339,7 +341,7 @@ function onPlanes(buf, count) {
     if (!p.icaosVistos[pl.icao]) { p.icaosVistos[pl.icao] = t; event(`✈ Avião novo: ${pl.icao}${pl.callsign ? ` (${pl.callsign})` : ''}${pl.alt != null ? `, ${Math.round(pl.alt)} ft` : ''}${pl.lat != null ? ` em ${pl.lat.toFixed(3)}, ${pl.lon.toFixed(3)}` : ' (sem posição ainda)'}`, 'good'); }
   }
   p.planes = planes; p.planesAt = t; p.framesP++;
-  raw(`P + ${count} aviões (${2 + count * PLANE_DOWN_SIZE} B)`, 'tm');
+  raw(`P #${ph?.seq ?? '?'} + ${count} aviões (${12 + count * PLANE_DOWN_SIZE} B)${ph ? `, ${ph.mensagens} mensagens na missão` : ''}`, 'tm');
   changed();
 }
 

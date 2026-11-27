@@ -38,11 +38,27 @@ static void mp_limite(uint8_t reg, uint8_t mask, uint8_t valor)
 		(void)HAL_I2C_Mem_Write(s_i2c, MP2733_ADDR << 1, reg, I2C_MEMADD_SIZE_8BIT, &v, 1U, 100U);
 	}
 }
+/* ADC do MP2733 (datasheet Rev. 1.1): REG03h bit 6 ADC_RATE = 1 -> conversão contínua (o ADC_START,
+ * bit 7, fica só-leitura); REG08h bit 6 EN_ADC_DSG = 1 -> ADC também sem entrada (bateria em standby).
+ * Os dois voltam a 0 no watchdog do MP2733, por isso vão junto com os limites a cada keepalive. */
+#define MP2733_ADC_RATE_BIT   0x40U
+#define MP2733_EN_ADC_DSG_BIT 0x40U
+#define MAX17048_REG_CRATE    0x16U   /* taxa de carga/descarga, int16, 0,208 %/h por LSB */
+
 static void mp_limites(void)
 {
 	mp_limite(MP2733_REG_IINLIM, MP2733_IINLIM_MASK, MP2733_IINLIM_1_5A);
 	mp_limite(MP2733_REG_ICHG, MP2733_ICHG_MASK, MP2733_ICHG_1_0A);
+	mp_limite(MP2733_REG_ADC_OTG_CTRL, MP2733_ADC_RATE_BIT, MP2733_ADC_RATE_BIT);
+	mp_limite(MP2733_REG_TIMER_CONFIG, MP2733_EN_ADC_DSG_BIT, MP2733_EN_ADC_DSG_BIT);
 }
+
+/* Registradores de ADC do MP2733: 1 byte cada, escalas do datasheet (repetidas no solo):
+ *   0x0F VSYS 20 mV/LSB · 0x10 NTC 0,392 %/LSB · 0x11 VIN 60 mV/LSB · 0x12 ICHG 17,5 mA/LSB · 0x13 IIN 13,3 mA/LSB */
+typedef struct {
+	uint8_t vsys, ntc, vin, ichg, iin;
+	int16_t crate;
+} EpsCarga_t;
 
 static uint8_t mp_setup(MP2733_HandleTypeDef *h)
 {
@@ -100,7 +116,7 @@ void eps_keepalive(void)
 	mux_desliga();
 }
 
-static void le_bateria(uint8_t b, uint8_t *status, uint8_t *falha, uint16_t *mv, uint16_t *soc)
+static void le_bateria(uint8_t b, uint8_t *status, uint8_t *falha, uint16_t *mv, uint16_t *soc, EpsCarga_t *c)
 {
 	if (s_tem & (b ? EPS_TEM_MP2 : EPS_TEM_MP1)) {
 		mp_limites();
@@ -109,6 +125,11 @@ static void le_bateria(uint8_t b, uint8_t *status, uint8_t *falha, uint16_t *mv,
 		uint8_t r = 0;
 		if (MP2733_ReadRegister(&s_mp[b], MP2733_REG_STATUS, &r)) *status = r;
 		if (MP2733_ReadRegister(&s_mp[b], MP2733_REG_FAULT, &r)) *falha = r;
+		if (MP2733_ReadRegister(&s_mp[b], MP2733_REG_ADC_SYS_VOLTAGE, &r)) c->vsys = r;
+		if (MP2733_ReadRegister(&s_mp[b], MP2733_REG_ADC_THERMISTOR, &r)) c->ntc = r;
+		if (MP2733_ReadRegister(&s_mp[b], MP2733_REG_ADC_INPUT_VOLTAGE, &r)) c->vin = r;
+		if (MP2733_ReadRegister(&s_mp[b], MP2733_REG_ADC_CHARGE_CURRENT, &r)) c->ichg = r;
+		if (MP2733_ReadRegister(&s_mp[b], MP2733_REG_ADC_INPUT_CURRENT, &r)) c->iin = r;
 	}
 	if (s_tem & (b ? EPS_TEM_MAX2 : EPS_TEM_MAX1)) {
 		float v = 0.0f, s = 0.0f;
@@ -117,6 +138,8 @@ static void le_bateria(uint8_t b, uint8_t *status, uint8_t *falha, uint16_t *mv,
 			if (m >= 0) *mv = (uint16_t)m;           /* mV */
 			if (s >= 0.0f) *soc = (uint16_t)(s + 0.5f); /* % */
 		}
+		uint16_t cr = 0U;
+		if (MAX17048_ReadReg(&s_max[b], MAX17048_REG_CRATE, &cr) == HAL_OK) c->crate = (int16_t)cr;
 	}
 }
 
@@ -128,8 +151,25 @@ void eps_ler(Telemetry_t *t)
 	uint8_t fl[2] = {t->falha_carregador_1, t->falha_carregador_2};
 	uint16_t mv[2] = {t->tensao_bateria_1, t->tensao_bateria_2};
 	uint16_t soc[2] = {t->carga_bateria_1, t->carga_bateria_2};
-	if (mux_canal(EPS_CH_BAT1) == HAL_OK) le_bateria(0, &st[0], &fl[0], &mv[0], &soc[0]);
-	if (mux_canal(EPS_CH_BAT2) == HAL_OK) le_bateria(1, &st[1], &fl[1], &mv[1], &soc[1]);
+	EpsCarga_t c[2] = {
+		{ t->adc_tensao_sistema_1, t->adc_tensao_ntc_1, 0U, t->adc_corrente_carga_1, t->adc_corrente_sistema_1, t->taxa_carga_descarga_bateria_1 },
+		{ t->adc_tensao_sistema_2, t->adc_tensao_ntc_2, 0U, t->adc_corrente_carga_2, t->adc_corrente_sistema_2, t->taxa_carga_descarga_bateria_2 },
+	};
+	c[0].vin = (uint8_t)(t->tensao_painel_solar_1 / 0.06f + 0.5f);
+	c[1].vin = (uint8_t)(t->tensao_painel_solar_2 / 0.06f + 0.5f);
+	if (mux_canal(EPS_CH_BAT1) == HAL_OK) le_bateria(0, &st[0], &fl[0], &mv[0], &soc[0], &c[0]);
+	if (mux_canal(EPS_CH_BAT2) == HAL_OK) le_bateria(1, &st[1], &fl[1], &mv[1], &soc[1], &c[1]);
+	/* Carga pelos dados do MP2733 (os INA3221 estão ligados errados na placa):
+	 *   adc_tensao_sistema_n = VSYS (cru) · adc_tensao_ntc_n = NTC (cru) · adc_corrente_carga_n = ICHG (cru)
+	 *   adc_corrente_sistema_n = IIN, corrente de ENTRADA do carregador (cru)
+	 *   tensao_painel_solar_1/2 = VIN do carregador 1/2 em V (entrada: painel ou fonte); 3 e 4 ficam 0
+	 *   taxa_carga_descarga_bateria_n = CRATE do MAX17048 (cru, 0,208 %/h; positivo = carregando) */
+	for (uint8_t b = 0; b < 2U; b++) {
+		uint8_t *vs = b ? &t->adc_tensao_sistema_2 : &t->adc_tensao_sistema_1;
+		*vs = c[b].vsys;
+		if (b) { t->adc_tensao_ntc_2 = c[b].ntc; t->adc_corrente_carga_2 = c[b].ichg; t->adc_corrente_sistema_2 = c[b].iin; t->taxa_carga_descarga_bateria_2 = c[b].crate; t->tensao_painel_solar_2 = (float)c[b].vin * 0.06f; }
+		else   { t->adc_tensao_ntc_1 = c[b].ntc; t->adc_corrente_carga_1 = c[b].ichg; t->adc_corrente_sistema_1 = c[b].iin; t->taxa_carga_descarga_bateria_1 = c[b].crate; t->tensao_painel_solar_1 = (float)c[b].vin * 0.06f; }
+	}
 	t->status_carregador_1 = st[0]; t->status_carregador_2 = st[1];
 	t->falha_carregador_1 = fl[0];  t->falha_carregador_2 = fl[1];
 	t->tensao_bateria_1 = mv[0];    t->tensao_bateria_2 = mv[1];

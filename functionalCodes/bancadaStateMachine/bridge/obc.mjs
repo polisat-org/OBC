@@ -53,8 +53,8 @@ export function stepExpectation(step, antennaDeployedBefore) {
 }
 
 // ---------------------------------------------------------------- telemetria
-// struct Telemetry (customTypes.h), packed, little-endian, 85 bytes.
-export const TELEMETRY_SIZE = 85;
+// struct Telemetry (customTypes.h), packed, little-endian, 90 bytes.
+export const TELEMETRY_SIZE = 90;
 const FIELDS = [
   ['hora', 'u8'], ['minuto', 'u8'], ['segundo', 'u8'], ['dia', 'u8'], ['mes', 'u8'], ['ano', 'u8'],
   ['temperatura_bateria', 'f32'], ['temperatura_estrutura', 'f32'], ['umidade', 'f32'], ['pressao', 'f32'],
@@ -68,6 +68,7 @@ const FIELDS = [
   ['angulo_apontamento', 'str6'],
   ['tensao_bateria_1', 'u16'], ['tensao_bateria_2', 'u16'], ['carga_bateria_1', 'u16'], ['carga_bateria_2', 'u16'],
   ['taxa_carga_descarga_bateria_1', 'i16'], ['taxa_carga_descarga_bateria_2', 'i16'],
+  ['modo', 'u8'], ['estado', 'u8'], ['ultimo_tc', 'u8'], ['resultado_tc', 'u8'], ['seq_t', 'u8'],
 ];
 const SIZES = { u8: 1, u16: 2, i16: 2, f32: 4, str6: 6 };
 export const TELEMETRY_FIELDS = FIELDS.map(([name]) => name);
@@ -76,7 +77,8 @@ export const TELEMETRY_GROUPS = [
   { name: 'Relógio do OBC', sensor: 'DS3231', fields: ['hora', 'minuto', 'segundo', 'dia', 'mes', 'ano'] },
   { name: 'Ambiente e mecânica', sensor: 'BME280', fields: ['temperatura_bateria', 'temperatura_estrutura', 'umidade', 'pressao', 'deploy_antena'] },
   { name: 'Barramentos 13,8 V e 5 V', sensor: 'INA3221', fields: ['tensao_13v8', 'tensao_5v', 'corrente_13v8', 'corrente_5v'] },
-  { name: 'Painéis solares', sensor: 'INA3221', fields: ['tensao_painel_solar_1', 'tensao_painel_solar_2', 'tensao_painel_solar_3', 'tensao_painel_solar_4'] },
+  { name: 'Estado do OBC', sensor: 'OBC', fields: ['modo', 'estado', 'ultimo_tc', 'resultado_tc', 'seq_t'] },
+  { name: 'Entrada dos carregadores (VIN, V) · 3 e 4 sem uso', sensor: 'MP2733', fields: ['tensao_painel_solar_1', 'tensao_painel_solar_2', 'tensao_painel_solar_3', 'tensao_painel_solar_4'] },
   { name: 'Carregadores', sensor: 'MP2733', fields: ['status_carregador_1', 'status_carregador_2', 'falha_carregador_1', 'falha_carregador_2',
     'adc_tensao_sistema_1', 'adc_tensao_sistema_2', 'adc_tensao_ntc_1', 'adc_tensao_ntc_2',
     'adc_corrente_carga_1', 'adc_corrente_carga_2', 'adc_corrente_sistema_1', 'adc_corrente_sistema_2'] },

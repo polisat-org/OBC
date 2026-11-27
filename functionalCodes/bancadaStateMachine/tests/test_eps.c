@@ -75,6 +75,9 @@ int main(void) {
 	*ina2 = (Dev){.canal = 3, .addr = 0x41, .tipo = INA, .presente = 1};
 	mp1->r8[0x0C] = 0x5B; mp1->r8[0x0D] = 0x00;
 	mp2->r8[0x0C] = 0x48; mp2->r8[0x0D] = 0x80;
+	/* ADC do MP2733 1 (1 byte por canal): VSYS 3,90 V, NTC 50,2 %, VIN 9,00 V, ICHG 700 mA, IIN 399 mA */
+	mp1->r8[0x0F] = 195; mp1->r8[0x10] = 128; mp1->r8[0x11] = 150; mp1->r8[0x12] = 40; mp1->r8[0x13] = 30;
+	max1->r16[0x16] = 0x0030;  /* CRATE +48 LSB = +9,98 %/h (carregando) */
 	max1->r16[0x02] = 49920;   /* VCELL: 3,900 V (78,125 uV/LSB) */
 	max1->r16[0x04] = 0x5A80;  /* SOC 90,5 % */
 	max1->r16[0x08] = 0x0012;  /* VERSION */
@@ -98,6 +101,9 @@ int main(void) {
 	CHECK(t.status_carregador_1 == 0x5B && t.falha_carregador_1 == 0x00);
 	CHECK(t.status_carregador_2 == 0x48 && t.falha_carregador_2 == 0x80);
 	CHECK(t.tensao_bateria_1 == 3900 && t.carga_bateria_1 == 91);
+	CHECK(t.adc_tensao_sistema_1 == 195 && t.adc_tensao_ntc_1 == 128 && t.adc_corrente_carga_1 == 40 && t.adc_corrente_sistema_1 == 30);
+	CHECK(perto(t.tensao_painel_solar_1, 9.0f) && t.taxa_carga_descarga_bateria_1 == 48);
+	CHECK((mp1->r8[0x03] & 0x40) && (mp1->r8[0x08] & 0x40));   /* ADC contínuo e EN_ADC_DSG ligados */
 	CHECK(t.tensao_bateria_2 == 0 && t.carga_bateria_2 == 0);   /* bateria 2 ainda ausente */
 	CHECK(perto(t.tensao_13v8, 12.6f) && perto(t.tensao_5v, 5.0f));
 	CHECK(perto(t.corrente_13v8, 1.32f) && perto(t.corrente_5v, 0.874f));

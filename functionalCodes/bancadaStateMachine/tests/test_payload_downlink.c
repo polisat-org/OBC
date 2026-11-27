@@ -27,10 +27,28 @@ int main(int argc, char **argv) { (void)argc;
     CHECK(out[2].last_pos_met_ms == 0 && out[2].altitude_ft == 15000.0f && isnan(out[2].track_deg));
     CHECK(memcmp(out[2].callsign, "\0\0\0\0\0\0\0\0", 8) == 0);   /* sem indicativo */
     uint8_t q[PLD_DOWN_FRAME_MAX];
-    size_t len = pld_build_frame(out, n, q, sizeof q);
-    CHECK(len == 2 + 3 * 36 && q[0] == 'P' && q[1] == 3);
-    CHECK(pld_build_frame(out, n, q, 10) == 0);        /* não cabe */
-    CHECK(pld_build_frame(NULL, 0, q, sizeof q) == 2); /* quadro vazio */
+    CHECK(fabsf(st.met_max_s - 21.0f) < 1e-4f);         /* maior met_s dos válidos (o descartado tem 1,0) */
+    PldDownHeader_t hdr = { .seq = 0x1234, .tx_met_ms = 21500, .mensagens = 777 };
+    size_t len = pld_build_frame(out, n, &hdr, q, sizeof q);
+    CHECK(len == 12 + 3 * 36 && q[0] == 'P' && q[1] == 3);
+    CHECK(q[2] == 0x34 && q[3] == 0x12);                                        /* seq LE */
+    CHECK(q[4] == (21500 & 0xFF) && q[5] == (21500 >> 8) && q[6] == 0 && q[7] == 0);
+    CHECK(q[8] == (777 & 0xFF) && q[9] == (777 >> 8));
+    CHECK(memcmp(&q[12], &out[0], sizeof(PlaneDown_t)) == 0);
+    CHECK(pld_build_frame(out, n, &hdr, q, 10) == 0);         /* não cabe */
+    CHECK(pld_build_frame(NULL, 0, &hdr, q, sizeof q) == 12); /* quadro vazio */
+    /* contador de mensagens: soma os aumentos por ICAO; avião novo entra com o contador inteiro */
+    static PldMsgs_t m; pld_msgs_reset(&m);
+    Plane_t b2[HERMES_NUM_PLANES]; memcpy(b2, in, sizeof b2);
+    b2[0].messages = 100.0f; b2[1].messages = 50.0f; b2[2].messages = NAN;
+    CHECK(pld_msgs_update(&m, b2) == 150);
+    b2[0].messages = 130.0f;                            /* +30 */
+    b2[1].icaoID = 0.0f;                                /* 4B1817 saiu do bloco */
+    CHECK(pld_msgs_update(&m, b2) == 180);
+    b2[1].icaoID = (float)0x4B1817; b2[1].messages = 70.0f;   /* voltou: +20 sobre os 50 guardados */
+    CHECK(pld_msgs_update(&m, b2) == 200);
+    b2[0].messages = 5.0f;                              /* contador reiniciou no dump1090: +5 */
+    CHECK(pld_msgs_update(&m, b2) == 205);
     FILE *o = fopen(argv[2], "wb"); fwrite(q, 1, len, o); fclose(o);
     /* trailer TCS gerado pelo hermes_simples/tcs_link.py real (vetor de referência) */
     static const uint8_t tcsRef[HERMES_TCS_SIZE] = { 0x54, 0x43, 0x53, 0x31, 0x01, 0x01, 0x0F, 0x00, 0x02, 0x08, 0xBB, 0xFE, 0xB7, 0x07, 0x00, 0x80, 0x23, 0x64, 0x00, 0x06, 0xFD, 0x3A, 0x00, 0x00, 0x01, 0x07, 0x00, 0x00, 0x00, 0x00, 0xB3, 0xE4 };

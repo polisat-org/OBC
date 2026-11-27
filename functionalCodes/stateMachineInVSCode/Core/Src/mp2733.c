@@ -122,27 +122,18 @@ uint8_t MP2733_GetFault(MP2733_HandleTypeDef * MP2733)
 // Ler valores ADC
 uint8_t MP2733_ReadADC(MP2733_HandleTypeDef * MP2733, uint8_t adc_reg, uint16_t *adc_value)
 {
-    uint8_t lsb, msb;
-
-    // Primeiro habilita a leitura ADC
-    if (!MP2733_WriteRegister(MP2733, MP2733_REG_ADC_OTG_CTRL, 0x11)) // Bit 0 = 1 para ler ADC
+    /* Datasheet Rev. 1.1: cada resultado de ADC (REG0Eh..REG13h) é 1 byte. A versão anterior escrevia
+     * 0x11/0x10 no REG03h, o que não liga o ADC (ADC_START é o bit 7, ADC_RATE o bit 6) e mexia na
+     * configuração do OTG, e lia adc_reg + 1 como byte alto (é outro canal). Liga a conversão contínua
+     * preservando os bits do OTG e devolve o byte cru (escalas em eps.c). */
+    uint8_t ctrl, v;
+    if (!MP2733_ReadRegister(MP2733, MP2733_REG_ADC_OTG_CTRL, &ctrl))
         return 0;
-
-    HAL_Delay(1); // Pequeno delay para conversão
-
-    // Lê o registrador ADC especificado
-    if (!MP2733_ReadRegister(MP2733, adc_reg, &lsb))
+    if ((ctrl & 0x40U) == 0U && !MP2733_WriteRegister(MP2733, MP2733_REG_ADC_OTG_CTRL, (uint8_t)(ctrl | 0x40U)))
         return 0;
-
-    if (!MP2733_ReadRegister(MP2733, adc_reg + 1, &msb)) // Próximo registrador contém MSB
+    if (!MP2733_ReadRegister(MP2733, adc_reg, &v))
         return 0;
-
-    *adc_value = (msb << 8) | lsb;
-
-    // Desabilita leitura ADC
-    if (!MP2733_WriteRegister(MP2733, MP2733_REG_ADC_OTG_CTRL, 0x10)) // Bit 0 = 0
-        return 0;
-
+    *adc_value = v;
     return 1;
 }
 

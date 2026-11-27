@@ -6,7 +6,15 @@
  * LoRa a 9600, então o OBC repassa só o essencial de cada avião, num registro de
  * 36 bytes (os 28 B do Plane_t do ICD do payload + o indicativo de voo, 8 B):
  *
- *   quadro 'P' ao TT&C = 'P' + count (1 B) + count x PlaneDown_t (36 B)
+ *   quadro 'P' ao TT&C = 'P' + count (1 B) + seq (u16) + tx_met_ms (u32) + mensagens (u32)
+ *                        + count x PlaneDown_t (36 B)                       (12 + 36n B)
+ *
+ *   seq        contador de quadros 'P' (perda no solo = buracos na sequência)
+ *   tx_met_ms  instante da transmissão no relógio de missão do payload: maior met_s do bloco
+ *              + tempo que o OBC segurou o bloco. Latência recepção -> transmissão de cada
+ *              avião = tx_met_ms - last_pos_met_ms (HLR-ADS-08).
+ *   mensagens  mensagens ADS-B decodificadas desde o início da missão (soma dos aumentos do
+ *              contador "messages" do dump1090 de cada avião; ver pld_msgs_*).
  *
  * Como o bloco não tem CRC, cada registro passa por um teste de plausibilidade
  * antes de descer: ICAO de 24 bits inteiro, latitude/longitude na faixa.
@@ -36,14 +44,37 @@ typedef struct __attribute__((packed)) {
 _Static_assert(sizeof(PlaneDown_t) == 36U, "PlaneDown_t precisa ter 36 bytes");
 
 #define PLD_DOWN_MAX_PLANES   HERMES_NUM_PLANES
-#define PLD_DOWN_FRAME_MAX    (2U + PLD_DOWN_MAX_PLANES * sizeof(PlaneDown_t))   /* 722 B */
+#define PLD_DOWN_HDR_SIZE     12U
+#define PLD_DOWN_FRAME_MAX    (PLD_DOWN_HDR_SIZE + PLD_DOWN_MAX_PLANES * sizeof(PlaneDown_t))   /* 732 B */
 #define PLD_DOWN_MARKER       ((uint8_t)'P')
 
 typedef struct {
     uint8_t validos;      /* aviões que vão no quadro 'P' */
     uint8_t vazios;       /* slots livres (icaoID == 0) */
     uint8_t descartados;  /* registros implausíveis (bloco corrompido?) */
+    float   met_max_s;    /* maior met_s dos aviões válidos (instante do bloco); -1 se nenhum */
 } PldCompactStats_t;
+
+typedef struct {
+    uint16_t seq;
+    uint32_t tx_met_ms;
+    uint32_t mensagens;
+} PldDownHeader_t;
+
+/* Contador de mensagens decodificadas na missão. O dump1090 conta as mensagens de cada avião
+ * (campo messages, cumulativo); a cada bloco soma-se o aumento de cada ICAO em relação à última
+ * vez que ele foi visto. Tabela de PLD_MSGS_TABELA ICAOs, substituição circular (o Pi emula igual). */
+#define PLD_MSGS_TABELA 64U
+typedef struct {
+    uint32_t icao[PLD_MSGS_TABELA];
+    uint32_t msgs[PLD_MSGS_TABELA];
+    uint8_t  usados;
+    uint8_t  proximo;
+    uint32_t total;
+} PldMsgs_t;
+
+void     pld_msgs_reset(PldMsgs_t *m);
+uint32_t pld_msgs_update(PldMsgs_t *m, const Plane_t in[HERMES_NUM_PLANES]);
 
 /*
  * Converte o bloco do payload para registros de downlink.
@@ -54,10 +85,10 @@ size_t pld_compact(const Plane_t in[HERMES_NUM_PLANES],
                    PldCompactStats_t *stats);
 
 /*
- * Monta o quadro 'P' (marcador + count + registros) em buf.
+ * Monta o quadro 'P' (marcador + count + cabeçalho + registros) em buf, little-endian.
  * Devolve o tamanho do quadro, ou 0 se não couber em cap.
  */
-size_t pld_build_frame(const PlaneDown_t *planes, size_t count,
+size_t pld_build_frame(const PlaneDown_t *planes, size_t count, const PldDownHeader_t *hdr,
                        uint8_t *buf, size_t cap);
 
 /* ------------------------------------------------------------ trailer TCS ---
