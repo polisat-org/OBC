@@ -53,6 +53,17 @@
  * aleatórios, alguns na faixa 0x00-0x0F (0x02 = Deploy). Só vira telecomando o byte com pelo menos
  * TC_SILENCIO_MS de silêncio (sem bytes nem erros) antes e depois. */
 #define TC_SILENCIO_MS       30U
+/* TTC_BUSY (PC0, J2-10 do barramento): o TT&C põe em alto enquanto o rádio está ocupado ou há um quadro
+ * esperando o rádio. Antes de cada quadro, o OBC espera o busy baixar, por no máximo TTC_BUSY_ESPERA_MS;
+ * depois disso manda assim mesmo (o TT&C guarda até 1 KB na UART). */
+#define TTC_BUSY_PORT        GPIOC
+#define TTC_BUSY_PIN         GPIO_PIN_0
+#define TTC_BUSY_ESPERA_MS   2000U
+/* Deploy das duas antenas (conector J3). CTRL_ANT_n em alto liga o MOSFET que queima o fio da antena n.
+ * O fio pressiona um botão ligado ao GND (MT_n): baixo = fio inteiro; alto (pull-up interno) = fio rompeu.
+ * Uma antena por vez, até o botão abrir ou DEPLOY_QUEIMA_MAX_MS. */
+#define DEPLOY_QUEIMA_MAX_MS 15000U
+#define DEPLOY_POLL_MS       10U
 #define TASK_START_FLAG      (1U << 0)
 #define TASK_STOP_FLAG       (1U << 1)
 
@@ -89,7 +100,13 @@ const osThreadAttr_t housekeepTask_attributes = {
 osThreadId_t transmitTaskHandle;
 const osThreadAttr_t transmitTask_attributes = {
   .name = "transmitTask",
+#if MONITOR_USB || ENABLE_DEBUG_UART2
+  /* com debug, o debugTelemetria() formata texto (vsnprintf) nesta pilha: 512 B estourava e corrompia o TCB
+   * da housekeepTask (logo abaixo na heap). No voo o debug não é compilado e a pilha fica como antes. */
+  .stack_size = 256 * 4,
+#else
   .stack_size = 128 * 4,
+#endif
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for receiveTask */
@@ -103,7 +120,11 @@ const osThreadAttr_t receiveTask_attributes = {
 osThreadId_t deployTaskHandle;
 const osThreadAttr_t deployTask_attributes = {
   .name = "deployTask",
+#if MONITOR_USB || ENABLE_DEBUG_UART2
+  .stack_size = 256 * 4,   /* debugPrintf formata texto nesta pilha (ver transmitTask) */
+#else
   .stack_size = 128 * 4,
+#endif
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for detumblingTask */
@@ -475,7 +496,13 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.MSICalibrationValue = 0;
+#if MONITOR_USB
+  /* Bancada com USB: o OTG FS exige HCLK > 14,2 MHz (RM0351). CPU a 16 MHz e APB1/APB2 /4, então UARTs, I2C
+   * e timers continuam vendo os mesmos 4 MHz do voo. */
+  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_8;
+#else
   RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_6;
+#endif
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -488,8 +515,13 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+#if MONITOR_USB
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV4;
+#else
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+#endif
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
   {
@@ -675,7 +707,30 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
+  /* TTC_BUSY: entrada com pull-down (sem o TT&C ligado, lê "livre") */
+  GPIO_InitTypeDef busy = {0};
+  busy.Pin = TTC_BUSY_PIN;
+  busy.Mode = GPIO_MODE_INPUT;
+  busy.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(TTC_BUSY_PORT, &busy);
 
+  /* Deploy: CTRL_ANT_1 = PA15, CTRL_ANT_2 = PC10 (saídas, começam em baixo);
+   * MT_1 = PC12, MT_2 = PC11 (entradas com pull-up: o botão fecha para o GND enquanto o fio está inteiro) */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_10, GPIO_PIN_RESET);
+  GPIO_InitTypeDef ctrl = {0};
+  ctrl.Mode = GPIO_MODE_OUTPUT_PP;
+  ctrl.Pull = GPIO_PULLDOWN;
+  ctrl.Speed = GPIO_SPEED_FREQ_LOW;
+  ctrl.Pin = GPIO_PIN_15;
+  HAL_GPIO_Init(GPIOA, &ctrl);
+  ctrl.Pin = GPIO_PIN_10;
+  HAL_GPIO_Init(GPIOC, &ctrl);
+  GPIO_InitTypeDef mt = {0};
+  mt.Pin = GPIO_PIN_11 | GPIO_PIN_12;
+  mt.Mode = GPIO_MODE_INPUT;
+  mt.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOC, &mt);
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
@@ -831,10 +886,26 @@ static void payloadComando(uint8_t cmd)
 	(void)HAL_UART_Transmit(&huart3, q, sizeof(q), 50);
 }
 
+static volatile uint32_t ttcBusyEsgotado;   /* quadros mandados com o TT&C ainda ocupado (diagnóstico) */
+static volatile uint32_t ttcZDescartados;   /* azimutes 'Z' não mandados porque o TT&C estava ocupado */
+
+static bool ttcOcupado(void) { return HAL_GPIO_ReadPin(TTC_BUSY_PORT, TTC_BUSY_PIN) == GPIO_PIN_SET; }
+
+/* Chamar com o uartMutex: espera o TT&C ficar livre antes de começar um quadro. */
+static void ttcEsperaLivre(void)
+{
+	uint32_t t0 = osKernelGetTickCount();
+	while (ttcOcupado()) {
+		if ((osKernelGetTickCount() - t0) >= TTC_BUSY_ESPERA_MS) { ttcBusyEsgotado++; return; }
+		osDelay(2);
+	}
+}
+
 /* Manda o quadro 'P' ao TT&C (USART1), sob o mesmo mutex da telemetria. */
 static void payloadEnviaDownlink(const uint8_t *frame, size_t len)
 {
 	osMutexAcquire(uartMutexHandle, osWaitForever);
+	ttcEsperaLivre();
 	HAL_UART_Transmit(&huart1, (uint8_t *)frame, (uint16_t)len, 2000);
 #if defined(BANCADA_ESPELHO) && BANCADA_ESPELHO
 	/* Bancada: espelha o quadro na USART2 (ST-Link) para o PC ver os aviões. */
@@ -1003,9 +1074,12 @@ void StartMainTask(void *argument)
 
 		case EVT_DEPLOY_DONE:
 			if (deployInProgress) {
+				/* data.telecommand: bit 0 = antena 1 aberta, bit 1 = antena 2 aberta. Só conta como feito com
+				 * as duas; senão um novo TC de deploy tenta de novo (as que já abriram são puladas). */
 				deployInProgress = false;
-				antennaDeployed = true;
-				debugPrintf("[%08lu] deploy done\r\n", evt.timestamp);
+				antennaDeployed = (evt.data.telecommand == 0x03U);
+				debugPrintf("[%08lu] deploy done: ant1=%u ant2=%u\r\n", evt.timestamp,
+						(unsigned int)(evt.data.telecommand & 1U), (unsigned int)((evt.data.telecommand >> 1) & 1U));
 			}
 			break;
 
@@ -1113,6 +1187,7 @@ void StartTransmitTask(void *argument)
 	  osMessageQueueGet(transmitQueueHandle, &telemetryPacket, NULL, osWaitForever);
 
 	  osMutexAcquire(uartMutexHandle, osWaitForever);
+	  ttcEsperaLivre();
 	  uint8_t marker = 'T';
 	  HAL_UART_Transmit(&huart1, &marker, 1, 100);
 	  HAL_UART_Transmit(&huart1, (uint8_t*) telemetryPacket, sizeof(Telemetry_t), 1000);
@@ -1240,11 +1315,38 @@ void StartDeployTask(void *argument)
   /* USER CODE BEGIN StartDeployTask */
   for(;;)
   {
+	  static const struct { GPIO_TypeDef *cp; uint16_t cpin; GPIO_TypeDef *mp; uint16_t mpin; } ant[2] = {
+		  { GPIOA, GPIO_PIN_15, GPIOC, GPIO_PIN_12 },   /* antena 1: CTRL_ANT_1 / MT_1 */
+		  { GPIOC, GPIO_PIN_10, GPIOC, GPIO_PIN_11 },   /* antena 2: CTRL_ANT_2 / MT_2 */
+	  };
 	  osThreadFlagsWait(TASK_START_FLAG, osFlagsWaitAny, osWaitForever);
-	  debugPrintf("[%08lu] deploy task ran\r\n", osKernelGetTickCount());
+	  uint8_t abertas = 0U;
+	  for (uint32_t i = 0U; i < 2U; i++) {
+		  if (HAL_GPIO_ReadPin(ant[i].mp, ant[i].mpin) == GPIO_PIN_SET) {
+			  abertas |= (uint8_t)(1U << i);
+			  debugPrintf("[%08lu] deploy antena %lu: ja aberta, nao queima\r\n", osKernelGetTickCount(), i + 1U);
+			  continue;
+		  }
+		  uint32_t t0 = osKernelGetTickCount();
+		  HAL_GPIO_WritePin(ant[i].cp, ant[i].cpin, GPIO_PIN_SET);
+		  while (HAL_GPIO_ReadPin(ant[i].mp, ant[i].mpin) == GPIO_PIN_RESET
+				  && (osKernelGetTickCount() - t0) < DEPLOY_QUEIMA_MAX_MS) {
+			  osDelay(DEPLOY_POLL_MS);
+		  }
+		  HAL_GPIO_WritePin(ant[i].cp, ant[i].cpin, GPIO_PIN_RESET);
+		  uint32_t ms = osKernelGetTickCount() - t0;
+		  if (HAL_GPIO_ReadPin(ant[i].mp, ant[i].mpin) == GPIO_PIN_SET) {
+			  abertas |= (uint8_t)(1U << i);
+			  debugPrintf("[%08lu] deploy antena %lu: aberta em %lu ms\r\n", osKernelGetTickCount(), i + 1U, ms);
+		  } else {
+			  debugPrintf("[%08lu] deploy antena %lu: FALHOU (botao ainda fechado apos %lu ms)\r\n",
+					  osKernelGetTickCount(), i + 1U, ms);
+		  }
+	  }
 	  Event_t evt = {
 		  .type = EVT_DEPLOY_DONE,
-		  .timestamp = osKernelGetTickCount()
+		  .timestamp = osKernelGetTickCount(),
+		  .data.telecommand = abertas
 	  };
 	  osMessageQueuePut(eventQueueHandle, &evt, 0U, osWaitForever);
   }
@@ -1421,7 +1523,9 @@ void StartDetumblingTask(void *argument)
 			/* ao TT&C na hora, num quadro 'Z' + 5 caracteres (no máximo 1 por segundo) */
 			quadroZ[0] = (uint8_t)'Z';
 			memcpy(&quadroZ[1], az, ADCS_AZ_LEN);
-			payloadEnviaDownlink(quadroZ, sizeof(quadroZ));
+			/* o 'Z' sai da supervisão do ADCS: não espera o TT&C (o próximo azimute vem em 1 s) */
+			if (ttcOcupado()) { ttcZDescartados++; }
+			else { payloadEnviaDownlink(quadroZ, sizeof(quadroZ)); }
 			debugPrintf("[%08lu] adcs az=%s\r\n", osKernelGetTickCount(), az);
 		}
 	}

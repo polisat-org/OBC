@@ -23,9 +23,9 @@ static uint8_t s_buf[256];
 
 void OTG_FS_IRQHandler(void) { HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS); }
 
-/* 48 MHz para a USB sem mexer no SYSCLK (MSI 4 MHz): PLLSAI1 = 4 MHz x 24 / 2, com o MSI calibrado pelo cristal
+/* 48 MHz para a USB: PLLSAI1 = (MSI / M = 4 MHz) x 24 / 2, com o MSI calibrado pelo cristal
  * de 32,768 kHz (modo MSI PLL). O board_obc fazia o mesmo com o MSI a 48 MHz direto. */
-static int clock48(void)
+static int clock48(uint32_t msi)
 {
 	RCC_OscInitTypeDef o = {0};
 	RCC_PeriphCLKInitTypeDef p = {0};
@@ -40,7 +40,7 @@ static int clock48(void)
 	p.PeriphClockSelection = RCC_PERIPHCLK_USB;
 	p.UsbClockSelection = RCC_USBCLKSOURCE_PLLSAI1;
 	p.PLLSAI1.PLLSAI1Source = RCC_PLLSOURCE_MSI;
-	p.PLLSAI1.PLLSAI1M = 1;
+	p.PLLSAI1.PLLSAI1M = msi / 4000000U;   /* entrada do PLLSAI1 sempre em 4 MHz */
 	p.PLLSAI1.PLLSAI1N = 24;
 	p.PLLSAI1.PLLSAI1P = RCC_PLLP_DIV7;
 	p.PLLSAI1.PLLSAI1Q = RCC_PLLQ_DIV2;
@@ -51,8 +51,10 @@ static int clock48(void)
 
 int monitor_usb_init(void)
 {
-	/* a conta do PLLSAI1 supõe MSI a 4 MHz; sem o cristal LSE o clock da USB não fica preciso */
-	if (HAL_RCC_GetSysClockFreq() != 4000000U || !clock48()) { s_pronto = 1; return 0; }
+	/* o SystemClock_Config da variante MONITOR_USB põe o MSI a 16 MHz: o OTG FS exige HCLK > 14,2 MHz.
+	 * Sem o cristal LSE o clock da USB não fica preciso. */
+	uint32_t msi = HAL_RCC_GetSysClockFreq();
+	if (HAL_RCC_GetHCLKFreq() < 14200000U || (msi % 4000000U) != 0U || !clock48(msi)) { s_pronto = 1; return 0; }
 	s_mtx = osMutexNew(NULL);
 	MX_USB_DEVICE_Init();
 	s_ok = 1;

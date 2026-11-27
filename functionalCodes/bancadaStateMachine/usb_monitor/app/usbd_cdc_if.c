@@ -20,6 +20,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_cdc_if.h"
+#include <string.h>
 #include "monitor_usb.h"
 
 /* USER CODE BEGIN INCLUDE */
@@ -89,6 +90,9 @@
 /* Create buffer for reception and transmission           */
 /* It's up to user to redefine and/or remove those define */
 /** Received data over USB are stored in this buffer      */
+/* [monitor USB] line coding atual: 115200 baud, 1 stop, sem paridade, 8 bits */
+static uint8_t s_lineCoding[7] = {0x00, 0xC2, 0x01, 0x00, 0x00, 0x00, 0x08};
+
 uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
 
 /** Data to send over USB CDC are stored in this buffer   */
@@ -222,10 +226,14 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
   /*******************************************************************************/
     case CDC_SET_LINE_CODING:
 
+      /* [monitor USB] guarda a configuração para devolver no GET: com o GET vazio o Windows recebe
+       * 0 baud / 0 bits e a abertura da porta falha ("dispositivo não está funcionando"). */
+      if (length >= sizeof(s_lineCoding)) { memcpy(s_lineCoding, pbuf, sizeof(s_lineCoding)); }
     break;
 
     case CDC_GET_LINE_CODING:
 
+      memcpy(pbuf, s_lineCoding, sizeof(s_lineCoding));
     break;
 
     case CDC_SET_CONTROL_LINE_STATE:
