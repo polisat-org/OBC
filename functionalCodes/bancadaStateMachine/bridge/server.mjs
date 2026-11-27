@@ -294,7 +294,7 @@ function onStmData(chunk) {
     if (pFrame) {
       if (pFrame.count === null) { pFrame.count = b; if (b > 20) { raw(`quadro 'P' com count inválido (${b})`, 'error'); pFrame = null; } else if (b === 0) { onPlanes(Buffer.alloc(0), 0); pFrame = null; } continue; }
       pFrame.bytes.push(b);
-      if (pFrame.bytes.length === pFrame.count * 28) { const c = pFrame.count, buf = Buffer.from(pFrame.bytes); pFrame = null; onPlanes(buf, c); }
+      if (pFrame.bytes.length === pFrame.count * PLANE_DOWN_SIZE) { const c = pFrame.count, buf = Buffer.from(pFrame.bytes); pFrame = null; onPlanes(buf, c); }
       continue;
     }
     if (lineBuf.length === 0 && b === 0x54) { frame = []; continue; }
@@ -315,14 +315,17 @@ setInterval(() => {
   }
 }, 200);
 
+const PLANE_DOWN_SIZE = 36; // PlaneDown_t do OBC (payload_downlink.h)
+const callsignOf = (buf, o) => { let s = ''; for (let i = 0; i < 8; i++) { const c = buf[o + i]; if (c < 0x20 || c > 0x7e) break; s += String.fromCharCode(c); } return s.trim() || null; };
+
 function onPlanes(buf, count) {
   const p = S.payload;
   const t = now();
   const planes = [];
   for (let k = 0; k < count; k++) {
-    const o = k * 28;
+    const o = k * PLANE_DOWN_SIZE;
     const pl = { icao: buf.readUInt32LE(o).toString(16).toUpperCase().padStart(6, '0'), lat: buf.readFloatLE(o + 4), lon: buf.readFloatLE(o + 8),
-      alt: buf.readFloatLE(o + 12), gs: buf.readFloatLE(o + 16), track: buf.readFloatLE(o + 20), posMetMs: buf.readUInt32LE(o + 24) };
+      alt: buf.readFloatLE(o + 12), gs: buf.readFloatLE(o + 16), track: buf.readFloatLE(o + 20), posMetMs: buf.readUInt32LE(o + 24), callsign: callsignOf(buf, o + 28) };
     for (const f of ['lat', 'lon', 'alt', 'gs', 'track']) pl[f] = Number.isFinite(pl[f]) ? Math.round(pl[f] * 10000) / 10000 : null;
     planes.push(pl);
     if (pl.lat != null && pl.lon != null) {
@@ -333,10 +336,10 @@ function onPlanes(buf, count) {
     }
   }
   for (const pl of planes) {
-    if (!p.icaosVistos[pl.icao]) { p.icaosVistos[pl.icao] = t; event(`✈ Avião novo: ${pl.icao}${pl.alt != null ? `, ${Math.round(pl.alt)} ft` : ''}${pl.lat != null ? ` em ${pl.lat.toFixed(3)}, ${pl.lon.toFixed(3)}` : ' (sem posição ainda)'}`, 'good'); }
+    if (!p.icaosVistos[pl.icao]) { p.icaosVistos[pl.icao] = t; event(`✈ Avião novo: ${pl.icao}${pl.callsign ? ` (${pl.callsign})` : ''}${pl.alt != null ? `, ${Math.round(pl.alt)} ft` : ''}${pl.lat != null ? ` em ${pl.lat.toFixed(3)}, ${pl.lon.toFixed(3)}` : ' (sem posição ainda)'}`, 'good'); }
   }
   p.planes = planes; p.planesAt = t; p.framesP++;
-  raw(`P + ${count} aviões (${2 + count * 28} B)`, 'tm');
+  raw(`P + ${count} aviões (${2 + count * PLANE_DOWN_SIZE} B)`, 'tm');
   changed();
 }
 

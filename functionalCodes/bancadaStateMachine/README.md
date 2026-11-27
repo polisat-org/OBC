@@ -92,7 +92,7 @@ Nenhum GPIO é usado. O bloco do Pi tem 4080 B de aviões + 32 B de trailer tér
 inclusive com a missão desligada); o OBC repassa o trailer ao TT&C no quadro `'H'` e usa a sonda mais fria como
 `temperatura_bateria`. Na variante de bancada (`-DBANCADA_MISSAO_CONTINUA=1`) o payload fica ligado desde o boot e o
 DESLIGAR do TT&C é ignorado, para o SDR ouvir sem parar. O OBC recebe os blocos por DMA (`hermes_adsb.c`, da equipe do payload), descarta
-registros implausíveis (o bloco não tem CRC) e manda ao TT&C um quadro `'P'` a cada 5 s com 28 B por avião
+registros implausíveis (o bloco não tem CRC) e manda ao TT&C um quadro `'P'` a cada 5 s com 36 B por avião (incluindo o indicativo de voo)
 (`payload_downlink.c`). O Pi precisa do SDR no USB dele (porta "USB" do meio, com OTG) e de fonte própria.
 Diagrama completo: `web/montagem.html` (ou http://localhost:8780/montagem.html com o bridge rodando).
 

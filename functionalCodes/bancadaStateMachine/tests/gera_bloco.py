@@ -13,17 +13,17 @@ NAN = math.nan
 I_ICAO, I_MET, I_ALT, I_GS, I_TRACK, I_LAT, I_LON, I_SEEN_POS = 0, 1, 3, 5, 9, 21, 22, 25
 
 
-def plane(icao=0.0, met=NAN, lat=NAN, lon=NAN, alt=NAN, gs=NAN, track=NAN, seen_pos=NAN, empty=False):
+def plane(icao=0.0, met=NAN, lat=NAN, lon=NAN, alt=NAN, gs=NAN, track=NAN, seen_pos=NAN, empty=False, flight=b""):
     f = [0.0 if empty else NAN] * 45
     for i, v in ((I_ICAO, icao), (I_MET, met), (I_LAT, lat), (I_LON, lon), (I_ALT, alt), (I_GS, gs), (I_TRACK, track), (I_SEEN_POS, seen_pos)):
         if not empty:
             f[i] = v
-    return FMT.pack(b"", b"", *f, 0, 0)
+    return FMT.pack(flight, b"", *f, 0, 0)
 
 
 slots = [
-    plane(0xE48C01, 12.5, -23.55, -46.63, 35000, 450.5, 90.0, 1.5),
-    plane(0x4B1817, 20.0, 10.0, 170.25, 1000, 120, 359.9, 0.0),
+    plane(0xE48C01, 12.5, -23.55, -46.63, 35000, 450.5, 90.0, 1.5, flight=b"TAM3054 "),
+    plane(0x4B1817, 20.0, 10.0, 170.25, 1000, 120, 359.9, 0.0, flight=b"GLO12\x01XY"),   # byte invalido corta
     plane(0xABCDEF, 21.0, alt=15000, gs=300),
 ] + [plane(empty=True)] * 14 + [
     plane(1234.5, 1.0, 0.0, 0.0),          # ICAO não inteiro

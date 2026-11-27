@@ -1,5 +1,5 @@
 /*
- * Downlink dos aviões do payload HERMES: Plane_t (204 B) -> PlaneDown_t (28 B).
+ * Downlink dos aviões do payload HERMES: Plane_t (204 B) -> PlaneDown_t (36 B).
  * Ver payload_downlink.h.
  */
 #include "payload_downlink.h"
@@ -40,6 +40,19 @@ static int posicao_plausivel(float lat, float lon)
     return 1;
 }
 
+/* Indicativo: copia o flight[8] até o primeiro byte fora de 0x20..0x7E (ou o 0 final); o resto fica 0. */
+static void copia_indicativo(char out[8], const char in[8])
+{
+    memset(out, 0, 8);
+    for (size_t i = 0; i < 8; i++) {
+        const unsigned char c = (unsigned char)in[i];
+        if (c < 0x20U || c > 0x7EU) {
+            break;
+        }
+        out[i] = (char)c;
+    }
+}
+
 size_t pld_compact(const Plane_t in[HERMES_NUM_PLANES],
                    PlaneDown_t out[PLD_DOWN_MAX_PLANES],
                    PldCompactStats_t *stats)
@@ -68,6 +81,7 @@ size_t pld_compact(const Plane_t in[HERMES_NUM_PLANES],
         d->altitude_ft = finite_f(p->alt_baro) ? p->alt_baro : NAN;
         d->velocity_kt = finite_f(p->gs) ? p->gs : NAN;
         d->track_deg = finite_f(p->track) ? p->track : NAN;
+        copia_indicativo(d->callsign, p->flight);
 
         /* Tempo da posição = momento em que o payload processou - idade da posição. */
         d->last_pos_met_ms = 0U;

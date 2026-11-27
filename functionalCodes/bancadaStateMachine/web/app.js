@@ -365,7 +365,7 @@ function renderPayload() {
       pl.blocks ? `${pl.blocks} blocos` : '0 blocos',
       pl.lastBlock ? `último ${ago(pl.lastBlockAt, n)}: ${pl.lastBlock.validos} aviões, ${pl.lastBlock.vazios} vazios, ${pl.lastBlock.descartados} descartados` : 'nenhum bloco ainda',
       pl.resyncs || pl.uartErros ? `${pl.resyncs} realinhamentos, ${pl.uartErros} erros de UART` : ''),
-    `<div class="arrow"><b>→</b>USART1 · 9600<br>'P' (28 B/avião) a cada 5 s</div>`,
+    `<div class="arrow"><b>→</b>USART1 · 9600<br>'P' (36 B/avião) a cada 5 s</div>`,
     node(ttcSt, 'TT&C', 'ESP32 → LoRa → solo',
       pl.downlinks ? `${pl.downlinks} quadros 'P'` : "0 quadros 'P'",
       pl.lastDownlink ? `último ${ago(pl.lastDownlinkAt, n)}: ${pl.lastDownlink.n} aviões, ${pl.lastDownlink.bytes} B` : 'sai a cada 5 s com a missão ligada e dados do Pi', ''),

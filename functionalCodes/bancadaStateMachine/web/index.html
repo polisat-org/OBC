@@ -99,7 +99,7 @@
           <li><b>Ligar:</b> o TT&amp;C manda o bit Missão; o OBC manda <code>A5 5A 01 FE</code> pela USART3 (<b>PB10 → pino 10</b>, RX0 do Pi) e repete a cada 2 s enquanto a missão estiver pedida. O Pi liga o SDR e o dump1090 (até ~15 s).</li>
           <li><b>Dados:</b> o Pi manda 20 aviões × 204 B = <b>4080 B a cada 5 s</b> pela UART (pino 8, TX0) para o <b>PB11</b> (USART3, 115200), recebidos por DMA.</li>
           <li><b>Validação:</b> o bloco não tem CRC; o OBC descarta registros com ICAO fora de 24 bits ou posição impossível.</li>
-          <li><b>Downlink:</b> a cada 5 s o OBC manda ao TT&amp;C um quadro <b>'P'</b> com 28 B por avião (ICAO, lat, lon, altitude, velocidade, rumo, tempo da posição).</li>
+          <li><b>Downlink:</b> a cada 5 s o OBC manda ao TT&amp;C um quadro <b>'P'</b> com 36 B por avião (ICAO, lat, lon, altitude, velocidade, rumo, tempo da posição, indicativo).</li>
           <li><b>Desligar:</b> TC sem o bit Missão; o OBC manda <code>A5 5A 00 FF</code> três vezes. Nenhum GPIO é usado.</li>
         </ul>
       </article>
